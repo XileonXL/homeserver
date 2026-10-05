@@ -1,0 +1,41 @@
+---
+# Read from the operator's environment on the controller (see .env.example).
+# The chat id is optional: when empty it is taken from the bot's latest message
+# and written back to the controller's .env file.
+alerts_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
+alerts_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"
+# External dead-man's-switch URL. Empty disables the heartbeat.
+alerts_heartbeat_url: "{{ lookup('ansible.builtin.env', 'HEARTBEAT_URL') }}"
+
+# Git-ignored file on the controller that receives TELEGRAM_CHAT_ID.
+alerts_env_file: "{{ playbook_dir }}/../.env"
+
+# Root-only file on the host that carries the secrets to the systemd units.
+alerts_host_env_file: /etc/homeserver-alerts.env
+
+# Proxmox notification objects.
+alerts_endpoint_name: telegram
+alerts_matcher_name: telegram-all
+alerts_endpoint_secret_name: token
+
+# The secret cannot be read back from Proxmox, so it is only sent when the
+# endpoint is created. Set to true to send it again (bot token rotation).
+alerts_rotate_secret: false
+
+# Handlebars is rendered by Proxmox, not by Ansible.
+alerts_endpoint_url: >-
+  https://api.telegram.org/bot{% raw %}{{ secrets.token }}{% endraw %}/sendMessage
+alerts_endpoint_header_name: Content-Type
+alerts_endpoint_header_value: application/json
+alerts_endpoint_body: >-
+  {"chat_id": {{ alerts_chat_id_effective | to_json }},
+  "text": "{% raw %}{{ escape title }}\n\n{{ escape message }}{% endraw %}"}
+
+# Thin pool alert.
+alerts_thinpool_threshold: 80
+alerts_thinpool_interval: 15min
+
+# Heartbeat.
+alerts_heartbeat_interval: 5min
+
+alerts_script_path: /usr/local/sbin/homeserver-thinpool-alert

@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Send a Telegram message when an LVM thin pool crosses a usage threshold, and
+# another when it drops back. Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from
+# the environment (systemd EnvironmentFile).
+set -euo pipefail
+
+readonly THRESHOLD="${ALERTS_THRESHOLD:-80}"
+readonly STATE_DIR="${STATE_DIRECTORY:-/var/lib/homeserver-alerts}"
+readonly STATE_FILE="${STATE_DIR}/thinpool.state"
+readonly API_URL="https://api.telegram.org"
+
+tmp_state=""
+
+log_err() {
+  printf '%s: %s\n' "${0##*/}" "$*" >&2
+}
+
+cleanup() {
+  [[ -z "${tmp_state}" ]] || rm -f -- "${tmp_state}"
+}
+
+# The token goes to curl on stdin so it never shows in the process list.
+send_message() {
+  local text="$1"
+  printf 'url = "%s/bot%s/sendMessage"\n' "${API_URL}" "${TELEGRAM_BOT_TOKEN}" \
+    | curl --silent --show-error --fail --max-time 20 --retry 2 --output /dev/null \
+      --config - \
+      --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+      --data-urlencode "text=${text}"
+}
+
+is_above() {
+  local data="$1" meta="$2"
+  awk -v d="${data}" -v m="${meta}" -v t="${THRESHOLD}" \
+    'BEGIN { exit !(d + 0 >= t || m + 0 >= t) }'
+}
+
+main() {
+  : "${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is not set}"
+  : "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is not set}"
+
+  local pools host vg lv data meta pool prev cur text failed=0
+  local -A previous=()
+
+  if ! pools="$(LC_ALL=C lvs --noheadings --nosuffix --separator '|' \
+    --options vg_name,lv_name,data_percent,metadata_percent \
+    --select 'lv_layout=thin,lv_layout=pool' 2>&1)"; then
+    log_err "lvs failed: ${pools}"
+    return 1
+  fi
+
+  mkdir -p -- "${STATE_DIR}"
+  if [[ -f "${STATE_FILE}" ]]; then
+    while read -r pool prev; do
+      previous["${pool}"]="${prev}"
+    done < "${STATE_FILE}"
+  fi
+
+  tmp_state="$(mktemp -- "${STATE_DIR}/thinpool.XXXXXX")"
+  trap cleanup EXIT
+  host="$(hostname)"
+
+  while IFS='|' read -r vg lv data meta; do
+    vg="${vg//[[:space:]]/}"
+    [[ -n "${vg}" ]] || continue
+    lv="${lv//[[:space:]]/}"
+    data="${data//[[:space:]]/}"
+    meta="${meta//[[:space:]]/}"
+    pool="${vg}/${lv}"
+    prev="${previous[${pool}]:-ok}"
+
+    if is_above "${data}" "${meta}"; then
+      cur="alert"
+    else
+      cur="ok"
+    fi
+
+    if [[ "${cur}" != "${prev}" ]]; then
+      if [[ "${cur}" == "alert" ]]; then
+        text="${host}: thin pool ${pool} is at or above ${THRESHOLD}% (data ${data:-0}%, metadata ${meta:-0}%)"
+      else
+        text="${host}: thin pool ${pool} recovered (data ${data:-0}%, metadata ${meta:-0}%)"
+      fi
+      if ! send_message "${text}"; then
+        log_err "could not send the Telegram message for ${pool}; will retry on the next run"
+        cur="${prev}"
+        failed=1
+      fi
+    fi
+    printf '%s %s\n' "${pool}" "${cur}" >> "${tmp_state}"
+  done <<< "${pools}"
+
+  mv -- "${tmp_state}" "${STATE_FILE}"
+  tmp_state=""
+  return "${failed}"
+}
+
+main "$@"

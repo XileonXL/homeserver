@@ -1,0 +1,241 @@
+---
+- name: Fail early without a bot token
+  ansible.builtin.assert:
+    that: alerts_bot_token | length > 0
+    fail_msg: >-
+      TELEGRAM_BOT_TOKEN is empty. Create a bot with @BotFather, put the token in
+      .env and load it.
+    quiet: true
+  delegate_to: localhost
+  become: false
+  run_once: true
+  no_log: true
+
+- name: Ask Telegram for the bot's latest updates
+  ansible.builtin.uri:
+    url: "https://api.telegram.org/bot{{ alerts_bot_token }}/getUpdates"
+    return_content: true
+  register: alerts_updates
+  delegate_to: localhost
+  become: false
+  run_once: true
+  check_mode: false
+  changed_when: false
+  no_log: true
+  when: alerts_chat_id | length == 0
+
+- name: Work out the chat id
+  ansible.builtin.set_fact:
+    alerts_chat_id_effective: >-
+      {{ alerts_chat_id if alerts_chat_id | length > 0 else
+         (alerts_updates.json.result | default([])
+          | selectattr('message', 'defined')
+          | map(attribute='message.chat.id') | list | last | default('') | string) }}
+  no_log: true
+
+- name: Fail when no chat id can be found
+  ansible.builtin.assert:
+    that: alerts_chat_id_effective | length > 0
+    fail_msg: >-
+      TELEGRAM_CHAT_ID is empty and the bot has no messages. Send any message to the
+      bot and run again.
+    quiet: true
+
+- name: Store the chat id in the controller's .env file
+  ansible.builtin.lineinfile:
+    path: "{{ alerts_env_file | realpath }}"
+    regexp: '^TELEGRAM_CHAT_ID='
+    line: "TELEGRAM_CHAT_ID='{{ alerts_chat_id_effective }}'"
+    create: true
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when: alerts_chat_id | length == 0
+
+- name: Install curl
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Read-only queries run in check mode too (check_mode: false). The list is read
+# instead of the single object so that a missing endpoint needs no error parsing.
+- name: Read the Proxmox webhook endpoints
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - get
+      - /cluster/notifications/endpoints/webhook
+      - --output-format
+      - json
+  register: alerts_endpoints
+  changed_when: false
+  check_mode: false
+
+- name: Read the Proxmox notification matchers
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - get
+      - /cluster/notifications/matchers
+      - --output-format
+      - json
+  register: alerts_matchers
+  changed_when: false
+  check_mode: false
+
+# Header and body come back base64 encoded, or possibly decoded; both are accepted.
+# Anything unrecognised counts as a difference.
+- name: Compare the endpoint with the desired state
+  ansible.builtin.set_fact:
+    alerts_endpoint_current: >-
+      {{ alerts_endpoints.stdout | from_json
+         | selectattr('name', 'equalto', alerts_endpoint_name) | list }}
+    alerts_header_wanted: >-
+      name={{ alerts_endpoint_header_name }},value={{ alerts_endpoint_header_value | b64encode }}
+    alerts_secret_wanted: >-
+      name={{ alerts_endpoint_secret_name }},value={{ alerts_bot_token | b64encode }}
+  no_log: true
+
+- name: Flatten the endpoint header for comparison
+  ansible.builtin.set_fact:
+    alerts_header_current: >-
+      {{ (alerts_endpoint_current[0].header | default([]) | map('string') | join(' '))
+         if alerts_endpoint_current | length > 0 else '' }}
+  no_log: true
+
+- name: Work out the endpoint state
+  ansible.builtin.set_fact:
+    alerts_endpoint_exists: "{{ alerts_endpoint_current | length > 0 }}"
+    alerts_endpoint_in_sync: >-
+      {{ alerts_endpoint_current | length > 0
+         and (alerts_endpoint_current[0].url | default('')) == alerts_endpoint_url
+         and (alerts_endpoint_current[0].method | default('') | lower) == 'post'
+         and (alerts_endpoint_current[0].body | default('')) in [alerts_endpoint_body | b64encode, alerts_endpoint_body]
+         and alerts_endpoint_header_name in alerts_header_current
+         and (alerts_endpoint_header_value | b64encode in alerts_header_current
+              or alerts_endpoint_header_value in alerts_header_current) }}
+  no_log: true
+
+- name: Create the Telegram webhook endpoint
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/notifications/endpoints/webhook
+      - --name
+      - "{{ alerts_endpoint_name }}"
+      - --method
+      - post
+      - --url
+      - "{{ alerts_endpoint_url }}"
+      - --header
+      - "{{ alerts_header_wanted }}"
+      - --body
+      - "{{ alerts_endpoint_body | b64encode }}"
+      - --secret
+      - "{{ alerts_secret_wanted }}"
+  changed_when: true
+  no_log: true
+  when: not alerts_endpoint_exists | bool
+  notify: Send a test notification
+
+- name: Update the Telegram webhook endpoint
+  ansible.builtin.command:
+    argv: >-
+      {{ ['pvesh', 'set', '/cluster/notifications/endpoints/webhook/' ~ alerts_endpoint_name,
+          '--method', 'post',
+          '--url', alerts_endpoint_url,
+          '--header', alerts_header_wanted,
+          '--body', alerts_endpoint_body | b64encode]
+         + (['--secret', alerts_secret_wanted] if alerts_rotate_secret | bool else []) }}
+  changed_when: true
+  no_log: true
+  when:
+    - alerts_endpoint_exists | bool
+    - not alerts_endpoint_in_sync | bool or alerts_rotate_secret | bool
+  notify: Send a test notification
+
+- name: Create the matcher that routes everything to Telegram
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/notifications/matchers
+      - --name
+      - "{{ alerts_matcher_name }}"
+      - --mode
+      - all
+      - --target
+      - "{{ alerts_endpoint_name }}"
+  changed_when: true
+  when: >-
+    alerts_matchers.stdout | from_json
+    | selectattr('name', 'equalto', alerts_matcher_name) | list | length == 0
+
+- name: Send the test notification now
+  ansible.builtin.meta: flush_handlers
+
+- name: Write the environment file for the alert units
+  ansible.builtin.template:
+    src: homeserver-alerts.env.j2
+    dest: "{{ alerts_host_env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install the thin pool alert script
+  ansible.builtin.copy:
+    src: homeserver-thinpool-alert
+    dest: "{{ alerts_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the thin pool alert units
+  ansible.builtin.template:
+    src: "thinpool-alert.{{ item }}.j2"
+    dest: "/etc/systemd/system/homeserver-thinpool-alert.{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - service
+    - timer
+  notify: Reload systemd
+
+- name: Install the heartbeat units
+  ansible.builtin.template:
+    src: "heartbeat.{{ item }}.j2"
+    dest: "/etc/systemd/system/homeserver-heartbeat.{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - service
+    - timer
+  notify: Reload systemd
+  when: alerts_heartbeat_url | length > 0
+
+- name: Load the new units
+  ansible.builtin.meta: flush_handlers
+
+# The units do not exist in check mode on a host that never had them.
+- name: Enable and start the thin pool alert timer
+  ansible.builtin.systemd:
+    name: homeserver-thinpool-alert.timer
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Enable and start the heartbeat timer
+  ansible.builtin.systemd:
+    name: homeserver-heartbeat.timer
+    state: started
+    enabled: true
+  when:
+    - alerts_heartbeat_url | length > 0
+    - not ansible_check_mode

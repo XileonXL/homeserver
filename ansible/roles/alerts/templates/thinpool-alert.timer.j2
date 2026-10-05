@@ -1,0 +1,9 @@
+[Unit]
+Description=Check LVM thin pool usage
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ alerts_thinpool_interval }}
+
+[Install]
+WantedBy=timers.target

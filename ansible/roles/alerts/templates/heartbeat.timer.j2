@@ -1,0 +1,9 @@
+[Unit]
+Description=Ping the external dead-man's-switch
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec={{ alerts_heartbeat_interval }}
+
+[Install]
+WantedBy=timers.target

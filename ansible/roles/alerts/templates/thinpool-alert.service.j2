@@ -1,0 +1,11 @@
+[Unit]
+Description=Warn when an LVM thin pool is filling up
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile={{ alerts_host_env_file }}
+Environment=ALERTS_THRESHOLD={{ alerts_thinpool_threshold }}
+StateDirectory=homeserver-alerts
+ExecStart={{ alerts_script_path }}

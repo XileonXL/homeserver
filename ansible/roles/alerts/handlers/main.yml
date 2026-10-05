@@ -1,0 +1,13 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+# A failing test fails the play, so a broken setup is not found out later.
+- name: Send a test notification
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - "/cluster/notifications/targets/{{ alerts_endpoint_name }}/test"
+  changed_when: false

@@ -1,0 +1,10 @@
+[Unit]
+Description=Ping the external dead-man's-switch
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile={{ alerts_host_env_file }}
+# The URL is expanded by systemd from the environment file and is not logged.
+ExecStart=/usr/bin/curl --fail --silent --output /dev/null --max-time 10 --retry 3 --retry-delay 5 --retry-connrefused ${HEARTBEAT_URL}
