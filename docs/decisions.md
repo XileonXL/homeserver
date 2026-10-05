@@ -38,10 +38,11 @@ The roles and the provider read credentials from the environment, so they never 
 a tracked file or the Terraform state. Where the `.env` values come from is up to
 you; a password manager works.
 
-## No secondary DNS
+## No unfiltered secondary DNS
 
-A secondary resolver is used alongside the primary, not after it. See the
-[network plan](02-network-plan.md#dns).
+A secondary resolver is used alongside the primary, not after it, so an ordinary
+public resolver lets ads through even while Pi-hole is up. A secondary is fine as long
+as it filters too. See the [network plan](02-network-plan.md#dns).
 
 ## Tailscale on the host, as a subnet router
 

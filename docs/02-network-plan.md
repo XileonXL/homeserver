@@ -59,16 +59,17 @@ as primary and a public resolver as secondary:
 
 Setting it on the router instead of on each device changes nothing.
 
-**A secondary must filter too.** If you need one:
+**A secondary must filter too.**
 
-| Option | Protects against |
-|---|---|
-| A filtering public resolver | the server being down; custom blocklists are lost |
-| A second Pi-hole on separate hardware | the server being down |
-| A second Pi-hole in another container | a Pi-hole failure only |
+| Option | Protects against | Cost |
+|---|---|---|
+| A filtering public resolver, such as AdGuard DNS (`94.140.14.14`) | the server being down | queries that go there skip your own lists and your query log |
+| A second Pi-hole on separate hardware | the server being down | another machine; the `pihole` role installs it as is |
+| A second Pi-hole in another container | a Pi-hole failure only | |
 
-The default here is no secondary. On the LAN, the server being down is obvious and is
-fixed in place.
+Use a filtering public resolver as secondary when other people depend on the network
+and nobody may be around to fix it. Leave the secondary empty only if a DNS outage is
+something you can always repair on the spot.
 
 ## Remote access with Tailscale
 

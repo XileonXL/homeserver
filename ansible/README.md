@@ -15,11 +15,11 @@ Hosts and addresses are in `inventory/hosts.yml`; per-group settings in
 
 ## Prerequisites
 
-Ansible on the workstation, and a dedicated SSH key authorised on the host:
+Ansible on the workstation, and a dedicated SSH key authorised on the host. The
+script creates `~/.ssh/id_ed25519_personal_homeserver` if it is missing:
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_personal_homeserver -C personal_homeserver
-ssh-copy-id -i ~/.ssh/id_ed25519_personal_homeserver.pub root@<proxmox-address>
+../scripts/setup-ssh-key.sh <proxmox-address>
 ```
 
 ## Secrets
@@ -60,5 +60,5 @@ ansible-playbook site.yml --limit proxmox -e proxmox_terraform_rotate_token=true
 
 - Tailscale admin console: approve the advertised route and disable key expiry for
   the host.
-- Router: hand out the Pi-hole address as the only DNS server, with no secondary. See the
-  [network plan](../docs/02-network-plan.md#dns).
+- Router: hand out the Pi-hole address as the primary DNS server. A secondary must
+  filter too; see the [network plan](../docs/02-network-plan.md#dns).

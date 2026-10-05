@@ -21,6 +21,7 @@ Planned: Home Assistant OS, Uptime Kuma, backups, and a Jellyfin media library.
 
 ```
 bootstrap/   one script, run once on the host right after installing Proxmox
+scripts/     helpers that run on the workstation
 ansible/     configures the host and everything inside the containers
 terraform/   creates the containers and VMs
 docs/        install guide, network plan and the reasoning behind each decision
@@ -61,8 +62,7 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
 3. **Give Ansible access** with a dedicated SSH key, and create your secrets file.
 
    ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_personal_homeserver
-   ssh-copy-id -i ~/.ssh/id_ed25519_personal_homeserver.pub root@192.168.1.50
+   scripts/setup-ssh-key.sh 192.168.1.50
    cp .env.example .env && chmod 600 .env
    ```
 
@@ -97,8 +97,9 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    ansible-playbook site.yml --limit pihole
    ```
 
-7. **Point your router at it.** Set the Pi-hole address as the only DNS server handed
-   out by DHCP. Do not add a secondary: see [docs/02](docs/02-network-plan.md#dns).
+7. **Point your router at it.** Set the Pi-hole address as the primary DNS server
+   handed out by DHCP. Never add an ordinary public resolver as secondary: see
+   [docs/02](docs/02-network-plan.md#dns).
 
 More detail in [ansible/](ansible/README.md) and [terraform/](terraform/README.md).
 
