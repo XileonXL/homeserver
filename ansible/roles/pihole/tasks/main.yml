@@ -1,0 +1,108 @@
+---
+- name: Check whether Pi-hole is installed
+  ansible.builtin.stat:
+    path: "{{ pihole_binary }}"
+  register: pihole_stat
+
+- name: Fail on first install without a web password
+  ansible.builtin.assert:
+    that: pihole_web_password | length > 0
+    fail_msg: >-
+      Pi-hole is not installed yet and PIHOLE_WEB_PASSWORD is empty. Export it and
+      run again.
+    quiet: true
+  # Check mode must work before the first install.
+  when:
+    - not pihole_stat.stat.exists
+    - not ansible_check_mode
+
+- name: Install installer prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# There is no apt repository for Pi-hole. The installer is downloaded to a file
+# (not piped into a shell) and left in place; it is only fetched when needed.
+- name: Download the Pi-hole installer
+  ansible.builtin.get_url:
+    url: "{{ pihole_installer_url }}"
+    dest: "{{ pihole_installer_path }}"
+    owner: root
+    group: root
+    mode: "0700"
+  when: not pihole_stat.stat.exists
+
+# Installed with its defaults and configured afterwards through pihole-FTL, so
+# nothing depends on how the installer expects to be pre-seeded.
+- name: Install Pi-hole
+  ansible.builtin.command:
+    argv:
+      - bash
+      - "{{ pihole_installer_path }}"
+      - --unattended
+    creates: "{{ pihole_binary }}"
+
+# Neither the FTL config nor the service exist before the install, so check mode
+# stops here on a host without Pi-hole.
+- name: Configure and run Pi-hole
+  when: not ansible_check_mode or pihole_stat.stat.exists
+  block:
+    - name: Enable and start pihole-FTL
+      ansible.builtin.service:
+        name: pihole-FTL
+        state: started
+        enabled: true
+
+    - name: Read the upstream DNS servers
+      ansible.builtin.command: pihole-FTL --config dns.upstreams
+      register: pihole_upstreams
+      changed_when: false
+      check_mode: false
+
+    - name: Set the upstream DNS servers
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - --config
+          - dns.upstreams
+          - "{{ pihole_upstream_dns | to_json }}"
+      changed_when: true
+      notify: Restart pihole-FTL
+      # Tolerates both '["a","b"]' and '[ a, b ]' output.
+      when: (pihole_upstreams.stdout | regex_findall('[^\s,\[\]"]+')) != pihole_upstream_dns
+
+    - name: Read the listening mode
+      ansible.builtin.command: pihole-FTL --config dns.listeningMode
+      register: pihole_listening
+      changed_when: false
+      check_mode: false
+
+    - name: Set the listening mode
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - --config
+          - dns.listeningMode
+          - "{{ pihole_listening_mode }}"
+      changed_when: true
+      notify: Restart pihole-FTL
+      when: pihole_listening.stdout | trim != pihole_listening_mode
+
+    # The value is hashed by FTL, so it cannot be compared; a non-empty variable
+    # is always applied. It is visible in the container's process list while the
+    # command runs.
+    - name: Set the web admin password
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - --config
+          - webserver.api.password
+          - "{{ pihole_web_password }}"
+      changed_when: true
+      no_log: true
+      when: pihole_web_password | length > 0

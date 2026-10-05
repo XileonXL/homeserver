@@ -1,0 +1,18 @@
+---
+# Upstream resolvers (Quad9). Applied in this order.
+pihole_upstream_dns:
+  - 9.9.9.9
+  - 149.112.112.112
+
+# LOCAL answers only clients on a directly attached subnet. Tailscale clients
+# arrive source-NATed to the Proxmox host (192.168.1.50), so they look local.
+pihole_listening_mode: LOCAL
+
+# Web admin password, read from the operator's environment on the controller.
+# Required on first install. Afterwards, export it only to set or change the
+# password; it cannot be read back, so a non-empty value is always applied.
+pihole_web_password: "{{ lookup('ansible.builtin.env', 'PIHOLE_WEB_PASSWORD') }}"
+
+pihole_installer_url: https://install.pi-hole.net
+pihole_installer_path: /usr/local/src/pihole-basic-install.sh
+pihole_binary: /usr/local/bin/pihole
