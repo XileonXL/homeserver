@@ -1,0 +1,171 @@
+---
+- name: Prepare the media disk
+  when: media_disk_device | length > 0
+  block:
+    - name: Check the device
+      ansible.builtin.stat:
+        path: "{{ media_disk_device }}"
+        # /dev/disk/by-id entries are symbolic links to the real device.
+        follow: true
+      register: media_disk_stat
+
+    - name: Assert the device exists and is a block device
+      ansible.builtin.assert:
+        that:
+          - media_disk_stat.stat.exists
+          - media_disk_stat.stat.isblk | default(false)
+        fail_msg: >-
+          MEDIA_DISK ({{ media_disk_device }}) is not an existing block device.
+        quiet: true
+
+    - name: Assert the label fits an ext4 filesystem
+      ansible.builtin.assert:
+        that: media_disk_label | length <= 16
+        fail_msg: ext4 labels are 16 characters at most.
+        quiet: true
+
+    - name: Read the layout of the device
+      ansible.builtin.command:
+        argv:
+          - lsblk
+          - --json
+          - --output
+          - NAME,TYPE,FSTYPE,LABEL
+          - "{{ media_disk_device }}"
+      register: media_disk_lsblk
+      changed_when: false
+      check_mode: false
+
+    # Lists signatures only; --no-act is a second guard against writing.
+    - name: Read the signatures on the device
+      ansible.builtin.command:
+        argv:
+          - wipefs
+          - --no-act
+          - --json
+          - "{{ media_disk_device }}"
+      register: media_disk_wipefs
+      changed_when: false
+      check_mode: false
+
+    - name: Decide whether the device is safe to format
+      ansible.builtin.import_tasks: assess.yml
+
+    - name: Remove the empty partition table
+      ansible.builtin.command:
+        argv:
+          - wipefs
+          - --all
+          - "{{ media_disk_device }}"
+      changed_when: true
+      when: media_disk_has_empty_table | bool
+
+    # No -F: the flag makes mkfs skip its own confirmation prompts, and nothing
+    # here needs it, because the device was just shown to be empty. Run without a
+    # terminal, a prompt that mkfs still raises reads end of input and aborts.
+    - name: Create the filesystem
+      ansible.builtin.command:
+        argv:
+          - mkfs.ext4
+          - -L
+          - "{{ media_disk_label }}"
+          - "{{ media_disk_device }}"
+      changed_when: true
+      when: media_disk_is_blank | bool
+
+    - name: Create the mount point
+      ansible.builtin.file:
+        path: "{{ media_disk_mount }}"
+        state: directory
+        mode: "0755"
+
+    # nofail: the host must boot when the disk is missing.
+    - name: Mount the disk by label at boot
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^\S+\s+{{ media_disk_mount | regex_escape }}\s'
+        line: "LABEL={{ media_disk_label }} {{ media_disk_mount }} ext4 defaults,nofail 0 2"
+      notify: Reload systemd
+
+    - name: Check whether the disk is mounted
+      ansible.builtin.command:
+        argv:
+          - findmnt
+          - --noheadings
+          - --mountpoint
+          - "{{ media_disk_mount }}"
+      register: media_disk_findmnt
+      changed_when: false
+      failed_when: media_disk_findmnt.rc not in [0, 1]
+      check_mode: false
+
+    - name: Mount the disk
+      ansible.builtin.command:
+        argv:
+          - mount
+          - "{{ media_disk_mount }}"
+      changed_when: true
+      when: media_disk_findmnt.rc != 0
+
+    # Applies to the root of the mounted filesystem, which is what the container sees.
+    - name: Give the mount root to the container's root
+      ansible.builtin.file:
+        path: "{{ media_disk_mount }}"
+        state: directory
+        owner: "{{ media_disk_idmap_offset }}"
+        group: "{{ media_disk_idmap_offset }}"
+        mode: "0755"
+
+    - name: Read the container configuration
+      ansible.builtin.command:
+        argv:
+          - pct
+          - config
+          - "{{ media_disk_guest_id }}"
+      register: media_disk_ct_config
+      changed_when: false
+      failed_when: media_disk_ct_config.rc != 0 and 'does not exist' not in media_disk_ct_config.stderr
+      check_mode: false
+
+    - name: Skip the container while it does not exist
+      ansible.builtin.debug:
+        msg: >-
+          Container {{ media_disk_guest_id }} does not exist yet. Create it, then run
+          this play again to attach the disk.
+      when: media_disk_ct_config.rc != 0
+
+    - name: Attach the disk to the container
+      when: media_disk_ct_config.rc == 0
+      block:
+        - name: Read the container status
+          ansible.builtin.command:
+            argv:
+              - pct
+              - status
+              - "{{ media_disk_guest_id }}"
+          register: media_disk_ct_status
+          changed_when: false
+          check_mode: false
+
+        - name: Set the bind mount
+          ansible.builtin.command:
+            argv:
+              - pct
+              - set
+              - "{{ media_disk_guest_id }}"
+              - "-{{ media_disk_guest_slot }}"
+              - "{{ media_disk_mount }},mp={{ media_disk_guest_mount }}"
+          changed_when: true
+          notify: Reboot the media container
+          when: >-
+            media_disk_ct_current.split(',') | first != media_disk_mount
+            or ('mp=' ~ media_disk_guest_mount) not in media_disk_ct_current.split(',')
+          vars:
+            media_disk_ct_current: >-
+              {{ media_disk_ct_config.stdout
+                 | regex_findall('(?m)^' ~ media_disk_guest_slot ~ ': (.*)$')
+                 | first | default('', true) }}
+
+# A mount point added while the container runs only takes effect after a restart.
+- name: Apply pending container changes now
+  ansible.builtin.meta: flush_handlers

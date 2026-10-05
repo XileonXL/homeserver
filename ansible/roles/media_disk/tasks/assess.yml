@@ -1,0 +1,43 @@
+---
+# Decides what to do with the device from two read-only probes:
+# media_disk_lsblk (lsblk --json) and media_disk_wipefs (wipefs --no-act --json).
+- name: Read what the device carries
+  ansible.builtin.set_fact:
+    media_disk_info: "{{ (media_disk_lsblk.stdout | from_json).blockdevices | first }}"
+    # wipefs prints nothing at all when there are no signatures.
+    media_disk_signatures: >-
+      {{ (((media_disk_wipefs.stdout | trim) or '{}') | from_json).signatures | default([]) }}
+
+- name: Decide whether the device is empty or already prepared
+  ansible.builtin.set_fact:
+    media_disk_is_whole: "{{ media_disk_info.type == 'disk' and (media_disk_info.children | default([]) | length) == 0 }}"
+    media_disk_found: >-
+      {{ (['type ' ~ media_disk_info.type] if media_disk_info.type != 'disk' else [])
+         + ([(media_disk_info.children | length) ~ ' partition(s)'] if media_disk_info.children | default([]) | length > 0 else [])
+         + (['filesystem ' ~ media_disk_info.fstype ~ ' with label ' ~ (media_disk_info.label | default('none', true))] if media_disk_info.fstype else [])
+         + (['signatures: ' ~ (media_disk_signatures | map(attribute='type') | join(', '))] if media_disk_signatures | length > 0 else []) }}
+
+# A partition table with no partitions holds no data. New and wiped disks often
+# carry one, so it counts as empty and is removed before formatting.
+- name: Classify the device
+  ansible.builtin.set_fact:
+    media_disk_has_empty_table: >-
+      {{ media_disk_is_whole and not media_disk_info.fstype
+         and media_disk_signatures | length > 0
+         and (media_disk_signatures | map(attribute='type') | map('lower')
+              | difference(['gpt', 'pmbr', 'dos']) | length) == 0 }}
+    media_disk_is_blank: >-
+      {{ media_disk_is_whole and not media_disk_info.fstype
+         and (media_disk_signatures | map(attribute='type') | map('lower')
+              | difference(['gpt', 'pmbr', 'dos']) | length) == 0 }}
+    media_disk_is_prepared: >-
+      {{ media_disk_is_whole and media_disk_info.fstype == 'ext4' and media_disk_info.label == media_disk_label }}
+
+- name: Refuse to touch a device that carries anything else
+  ansible.builtin.fail:
+    msg: >-
+      {{ media_disk_device }} is not empty and not a prepared media disk. Found:
+      {{ media_disk_found | join('; ') }}. The role formats only a whole disk with no
+      partitions, no filesystem and at most an empty partition table, and accepts only an ext4 filesystem
+      labelled {{ media_disk_label }}. It will not touch this device.
+  when: not media_disk_is_blank | bool and not media_disk_is_prepared | bool

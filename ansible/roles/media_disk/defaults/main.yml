@@ -1,0 +1,20 @@
+---
+# Stable path of the whole disk, read from the operator's environment on the
+# controller (see .env.example). Empty makes the role do nothing at all.
+media_disk_device: "{{ lookup('ansible.builtin.env', 'MEDIA_DISK') }}"
+
+# ext4 label (16 characters at most). fstab refers to the disk by it.
+media_disk_label: media
+
+# Where the host mounts the disk.
+media_disk_mount: /mnt/media
+
+# Unprivileged containers map their root to this host uid and gid.
+media_disk_idmap_offset: 100000
+
+# Container that gets the disk as a bind mount, the mount point slot used for it
+# and the path it appears at inside the container. A container that does not
+# exist yet is skipped.
+media_disk_guest_id: 163
+media_disk_guest_slot: mp0
+media_disk_guest_mount: /media
