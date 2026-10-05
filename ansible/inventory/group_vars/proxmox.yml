@@ -1,0 +1,5 @@
+---
+# Subnet router: advertise the whole LAN. Route approval is done in the
+# Tailscale admin console.
+tailscale_advertise_routes:
+  - 192.168.1.0/24
