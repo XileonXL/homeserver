@@ -9,6 +9,7 @@
     - role: proxmox_opentofu
     - role: haos_image
     - role: haos_network
+    - role: alerts
 
 # A fresh Debian LXC template may have no Python (or python3-apt), which
 # Ansible modules need. raw works without it. The facts gathered here are kept
@@ -46,3 +47,10 @@
 
   roles:
     - role: caddy
+
+- name: Configure the status page
+  hosts: gatus
+  gather_facts: false
+
+  roles:
+    - role: gatus

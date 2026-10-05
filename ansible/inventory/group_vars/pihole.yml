@@ -10,3 +10,5 @@ pihole_local_dns_records:
     ip: 192.168.1.64
   - name: homeassistant.homeserver.lan
     ip: 192.168.1.64
+  - name: status.homeserver.lan
+    ip: 192.168.1.64
