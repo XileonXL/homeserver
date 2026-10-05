@@ -1,0 +1,155 @@
+---
+# Read-only queries run in check mode too (check_mode: false); every mutating
+# command is skipped by Ansible in check mode.
+
+# The generic "ova" image is the x86-64 KVM image.
+- name: Assert an x86-64 host
+  ansible.builtin.assert:
+    that: ansible_facts['architecture'] == 'x86_64'
+    fail_msg: >-
+      The Home Assistant OS ova image is x86-64 only; this host is
+      {{ ansible_facts['architecture'] }}.
+    quiet: true
+
+- name: Read the storage configuration
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - get
+      - "/storage/{{ haos_image_storage }}"
+      - --output-format
+      - json
+  register: haos_image_storage_info
+  changed_when: false
+  check_mode: false
+
+# pvesh reports the content types as a comma separated string.
+- name: Work out the storage content types
+  ansible.builtin.set_fact:
+    haos_image_content: >-
+      {{ (haos_image_storage_info.stdout | from_json).content | default('', true)
+         | split(',') | reject('equalto', '') | list }}
+
+- name: Allow the import content type on the storage
+  ansible.builtin.command:
+    argv:
+      - pvesm
+      - set
+      - "{{ haos_image_storage }}"
+      - --content
+      - "{{ (haos_image_content + ['import']) | join(',') }}"
+  changed_when: true
+  when: "'import' not in haos_image_content"
+
+# Listing a content type the storage does not allow yet fails, which is the case
+# in check mode on a fresh host.
+- name: List import volumes already on the storage
+  ansible.builtin.command:
+    argv:
+      - pvesm
+      - list
+      - "{{ haos_image_storage }}"
+      - --content
+      - import
+  register: haos_image_list
+  changed_when: false
+  check_mode: false
+  when: "'import' in haos_image_content or not ansible_check_mode"
+
+- name: Find an existing image
+  ansible.builtin.set_fact:
+    haos_image_existing: >-
+      {{ (haos_image_list.stdout | default(''))
+         | regex_findall('(?m)^' ~ (haos_image_storage | regex_escape) ~ ':import/('
+                         ~ (haos_image_prefix | regex_escape) ~ '\S+\.qcow2)\s')
+         | sort | last | default('', true) }}
+
+# In check mode nothing is downloaded. The condition is re-evaluated for every
+# task in the block, so it must not depend on a fact that the block itself sets.
+- name: Download an image when none exists
+  when:
+    - haos_image_existing == ''
+    - not ansible_check_mode
+  block:
+    - name: Look up the latest release
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/{{ haos_image_repo }}/releases/latest"
+        return_content: true
+      register: haos_image_release
+      check_mode: false
+      when: haos_image_version == ''
+
+    - name: Resolve the version
+      ansible.builtin.set_fact:
+        haos_image_version_resolved: >-
+          {{ haos_image_version if haos_image_version != ''
+             else haos_image_release.json.tag_name | default('') }}
+
+    - name: Assert a version is known
+      ansible.builtin.assert:
+        that: haos_image_version_resolved != ''
+        fail_msg: No tag_name in the latest release of {{ haos_image_repo }}.
+        quiet: true
+
+    - name: Create the import directory and a work directory
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ haos_image_import_dir }}"
+        - "{{ haos_image_import_dir }}/.work"
+
+    # get_url writes to a temporary file and renames it, so a complete .xz or none.
+    - name: Download the compressed image
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/{{ haos_image_repo }}/releases/download/{{
+          haos_image_version_resolved }}/{{ haos_image_prefix }}{{
+          haos_image_version_resolved }}.qcow2.xz
+        dest: "{{ haos_image_import_dir }}/.work/{{ haos_image_prefix }}{{ haos_image_version_resolved }}.qcow2.xz"
+        mode: "0644"
+
+    # Proxmox only sees files in the import directory itself, so a half-written
+    # output in .work is never listed. --force replaces one left by an earlier run.
+    - name: Decompress the image in the work directory
+      ansible.builtin.command:
+        argv:
+          - xz
+          - --decompress
+          - --force
+          - --keep
+          - "{{ haos_image_import_dir }}/.work/{{ haos_image_prefix }}{{ haos_image_version_resolved }}.qcow2.xz"
+      changed_when: true
+
+    - name: Move the image into place
+      ansible.builtin.command:
+        argv:
+          - mv
+          - --force
+          - "{{ haos_image_import_dir }}/.work/{{ haos_image_prefix }}{{ haos_image_version_resolved }}.qcow2"
+          - "{{ haos_image_import_dir }}/{{ haos_image_prefix }}{{ haos_image_version_resolved }}.qcow2"
+      changed_when: true
+
+    - name: Remove the work directory
+      ansible.builtin.file:
+        path: "{{ haos_image_import_dir }}/.work"
+        state: absent
+
+    - name: Remember the downloaded image
+      ansible.builtin.set_fact:
+        haos_image_downloaded: "{{ haos_image_prefix }}{{ haos_image_version_resolved }}.qcow2"
+
+- name: Pick the image name
+  ansible.builtin.set_fact:
+    haos_image_name: "{{ haos_image_existing if haos_image_existing != '' else haos_image_downloaded | default('') }}"
+
+- name: Hand the image volume id to OpenTofu
+  ansible.builtin.copy:
+    dest: "{{ haos_image_tfvars_file | realpath }}"
+    content: |
+      {{ {'haos_image_file_id': haos_image_storage ~ ':import/' ~ haos_image_name} | to_json }}
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  when: haos_image_name != ''

@@ -1,0 +1,8 @@
+---
+# Home Assistant OS has no SSH and no cloud-init, so its address is set from the
+# Proxmox host through the QEMU guest agent. An empty address leaves the guest on DHCP
+# and the role does nothing.
+haos_network_vm_id: 162
+haos_network_address: ""
+haos_network_gateway: ""
+haos_network_dns: []

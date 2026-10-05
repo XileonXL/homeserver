@@ -1,0 +1,15 @@
+---
+# Home Assistant OS disk image handed to OpenTofu. An existing haos_ova-*.qcow2
+# on the storage is always reused: a different image would make OpenTofu replace
+# the VM, and the VM holds data that cannot be recreated.
+haos_image_storage: local
+# Mount point of the (directory) storage; Proxmox keeps import volumes below it.
+haos_image_storage_path: /var/lib/vz
+haos_image_import_dir: "{{ haos_image_storage_path }}/import"
+
+# Release tag, for example "16.2". Empty means the latest release.
+haos_image_version: ""
+haos_image_repo: home-assistant/operating-system
+haos_image_prefix: haos_ova-
+
+haos_image_tfvars_file: "{{ playbook_dir }}/../opentofu/envs/homeserver/haos_image.auto.tfvars.json"

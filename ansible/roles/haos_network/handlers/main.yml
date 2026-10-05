@@ -1,0 +1,15 @@
+---
+# The guest drops its old address here, so the command may not report back.
+- name: Bring the Home Assistant OS connection up
+  ansible.builtin.command:
+    argv:
+      - qm
+      - guest
+      - exec
+      - "{{ haos_network_vm_id }}"
+      - --
+      - nmcli
+      - connection
+      - up
+      - "{{ haos_network_connection }}"
+  changed_when: true

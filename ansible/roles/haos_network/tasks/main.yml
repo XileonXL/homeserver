@@ -1,0 +1,89 @@
+---
+- name: Set a static address on Home Assistant OS
+  when: haos_network_address | length > 0
+  block:
+    - name: Find the wired connection inside the guest
+      ansible.builtin.command:
+        argv:
+          - qm
+          - guest
+          - exec
+          - "{{ haos_network_vm_id }}"
+          - --
+          - nmcli
+          - --terse
+          - --fields
+          - NAME,TYPE
+          - connection
+          - show
+          - --active
+      register: haos_network_connections
+      changed_when: false
+      check_mode: false
+
+    - name: Pick the wired connection
+      ansible.builtin.set_fact:
+        haos_network_connection: >-
+          {{ (haos_network_connections.stdout | from_json)['out-data'] | default('')
+             | regex_findall('(?m)^(.+):802-3-ethernet$') | first | default('', true) }}
+
+    - name: Assert a wired connection was found
+      ansible.builtin.assert:
+        that: haos_network_connection != ''
+        fail_msg: >-
+          No active wired connection reported by the guest agent of VM
+          {{ haos_network_vm_id }}. Is Home Assistant OS running?
+        quiet: true
+
+    - name: Read the current IPv4 settings
+      ansible.builtin.command:
+        argv:
+          - qm
+          - guest
+          - exec
+          - "{{ haos_network_vm_id }}"
+          - --
+          - nmcli
+          - --get-values
+          - ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns
+          - connection
+          - show
+          - "{{ haos_network_connection }}"
+      register: haos_network_current
+      changed_when: false
+      check_mode: false
+
+    - name: Apply the static IPv4 settings
+      ansible.builtin.command:
+        argv:
+          - qm
+          - guest
+          - exec
+          - "{{ haos_network_vm_id }}"
+          - --
+          - nmcli
+          - connection
+          - modify
+          - "{{ haos_network_connection }}"
+          - ipv4.method
+          - manual
+          - ipv4.addresses
+          - "{{ haos_network_address }}"
+          - ipv4.gateway
+          - "{{ haos_network_gateway }}"
+          - ipv4.dns
+          - "{{ haos_network_dns | join(',') }}"
+      register: haos_network_modify
+      changed_when: true
+      notify: Bring the Home Assistant OS connection up
+      failed_when: haos_network_modify.rc != 0 or (haos_network_modify.stdout | from_json).exitcode != 0
+      when: haos_network_observed != haos_network_desired
+      vars:
+        haos_network_desired:
+          - manual
+          - "{{ haos_network_address }}"
+          - "{{ haos_network_gateway }}"
+          - "{{ haos_network_dns | join(',') }}"
+        haos_network_observed: >-
+          {{ ((haos_network_current.stdout | from_json)['out-data'] | default('')).splitlines()
+             | map('trim') | list }}
