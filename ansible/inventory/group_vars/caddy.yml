@@ -6,4 +6,4 @@ caddy_sites:
   - name: pihole.homeserver.lan
     upstream: http://192.168.1.60:80
   - name: homeassistant.homeserver.lan
-    upstream: http://192.168.1.62:8123
+    upstream: http://192.168.1.62:80

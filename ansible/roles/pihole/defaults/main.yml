@@ -12,6 +12,10 @@ pihole_listening_mode: LOCAL
 # hand in the web UI are replaced by this list.
 pihole_local_dns_records: []
 
+# Name under which the web interface is reached. Pi-hole answers 403 on / for any
+# other name. Empty keeps Pi-hole's default (pi.hole).
+pihole_web_domain: ""
+
 # Pi-hole's own clock sync. The operating system already keeps the time, and an
 # unprivileged container is not allowed to set it, so FTL would log an error
 # every ten minutes.

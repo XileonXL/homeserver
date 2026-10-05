@@ -141,6 +141,26 @@
              | map('trim') | map('regex_replace', '^"|"$', '')
              | reject('equalto', '') | list }}
 
+    - name: Read the web interface domain
+      ansible.builtin.command: pihole-FTL --config webserver.domain
+      register: pihole_web_domain_current
+      changed_when: false
+      check_mode: false
+      when: pihole_web_domain | length > 0
+
+    - name: Set the web interface domain
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - --config
+          - webserver.domain
+          - "{{ pihole_web_domain }}"
+      changed_when: true
+      notify: Restart pihole-FTL
+      when:
+        - pihole_web_domain | length > 0
+        - pihole_web_domain_current.stdout | trim != pihole_web_domain
+
     - name: Read the NTP sync setting
       ansible.builtin.command: pihole-FTL --config ntp.sync.active
       register: pihole_ntp_sync_current
