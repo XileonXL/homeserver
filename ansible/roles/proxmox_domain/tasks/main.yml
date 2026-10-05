@@ -1,0 +1,39 @@
+---
+- name: Set the domain of the Proxmox node
+  when: proxmox_domain_name | length > 0
+  block:
+    # The node name must keep resolving to this address or the cluster filesystem
+    # does not start, so only the fully qualified alias on the line changes.
+    - name: Set the fully qualified name in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^{{ ansible_host | regex_escape }}\s'
+        line: "{{ ansible_host }} {{ ansible_facts['hostname'] }}.{{ proxmox_domain_name }} {{ ansible_facts['hostname'] }}"
+        backup: true
+
+    - name: Read the node's DNS settings
+      ansible.builtin.command:
+        argv:
+          - pvesh
+          - get
+          - "/nodes/{{ ansible_facts['hostname'] }}/dns"
+          - --output-format
+          - json
+      register: proxmox_domain_dns
+      changed_when: false
+      check_mode: false
+
+    # The API replaces the whole resolver configuration, so the existing servers
+    # are passed back unchanged.
+    - name: Set the search domain
+      ansible.builtin.command:
+        argv: >-
+          {{ ['pvesh', 'set', '/nodes/' ~ ansible_facts['hostname'] ~ '/dns',
+              '--search', proxmox_domain_name]
+             + (['--dns1', proxmox_domain_current.dns1] if proxmox_domain_current.dns1 is defined else [])
+             + (['--dns2', proxmox_domain_current.dns2] if proxmox_domain_current.dns2 is defined else [])
+             + (['--dns3', proxmox_domain_current.dns3] if proxmox_domain_current.dns3 is defined else []) }}
+      changed_when: true
+      when: proxmox_domain_current.search | default('') != proxmox_domain_name
+      vars:
+        proxmox_domain_current: "{{ proxmox_domain_dns.stdout | from_json }}"

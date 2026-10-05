@@ -1,0 +1,4 @@
+---
+# DNS domain of the Proxmox node. The node name itself is never changed: Proxmox
+# stores guests under it. An empty value leaves the host as the installer set it.
+proxmox_domain_name: ""
