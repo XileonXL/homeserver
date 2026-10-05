@@ -1,0 +1,44 @@
+# {{ ansible_managed }}
+{% set ns = namespace(endpoints=[]) %}
+{% for e in gatus_endpoints %}
+{% set is_dns = e.dns_query_name is defined %}
+{% set item = {
+  'name': e.name,
+  'url': e.url,
+  'interval': e.interval | default(gatus_default_interval),
+  'conditions': (e.conditions | default(gatus_default_dns_conditions if is_dns else gatus_default_http_conditions)) | to_json | from_json,
+} %}
+{% if e.group is defined %}
+{% set item = {'name': e.name, 'group': e.group} | combine(item, recursive=false) %}
+{% endif %}
+{% if is_dns %}
+{% set item = item | combine({'dns': {'query-name': e.dns_query_name, 'query-type': e.dns_query_type | default('A')}}) %}
+{% endif %}
+{% if e.headers is defined %}
+{% set item = item | combine({'headers': e.headers}) %}
+{% endif %}
+{% set client = {} %}
+{% if e.insecure | default(false) | bool %}
+{% set client = client | combine({'insecure': true}) %}
+{% endif %}
+{% if e.ignore_redirect | default(false) | bool %}
+{% set client = client | combine({'ignore-redirect': true}) %}
+{% endif %}
+{% if client | length > 0 %}
+{% set item = item | combine({'client': client}) %}
+{% endif %}
+{% set item = item | combine({'alerts': [{
+  'type': 'telegram',
+  'failure-threshold': gatus_alert_failure_threshold | int,
+  'success-threshold': gatus_alert_success_threshold | int,
+  'send-on-resolved': true,
+}]}) %}
+{% set ns.endpoints = ns.endpoints + [item] %}
+{% endfor %}
+{% set config = {
+  'web': {'port': gatus_port | int},
+  'storage': {'type': 'sqlite', 'path': gatus_data_dir ~ '/data.db'},
+  'alerting': {'telegram': {'token': '${TELEGRAM_BOT_TOKEN}', 'id': '${TELEGRAM_CHAT_ID}'}},
+  'endpoints': ns.endpoints,
+} %}
+{{ config | to_nice_yaml(indent=2, sort_keys=false) }}

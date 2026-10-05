@@ -1,0 +1,40 @@
+---
+# Gatus release tag, built from source: the project publishes no binaries.
+gatus_version: v5.37.0
+gatus_repo_url: https://github.com/TwiN/gatus.git
+gatus_build_dir: /usr/local/src/gatus
+
+gatus_binary: /usr/local/bin/gatus
+gatus_user: gatus
+gatus_config_dir: /etc/gatus
+gatus_config_file: "{{ gatus_config_dir }}/config.yaml"
+gatus_env_file: "{{ gatus_config_dir }}/gatus.env"
+# Holds the version of the installed binary; written only after a successful build.
+gatus_version_file: "{{ gatus_config_dir }}/version"
+gatus_data_dir: /var/lib/gatus
+
+gatus_port: 8080
+
+# Endpoints to check, as a list of dicts:
+#   name, url              required. For a DNS check, url is the DNS server.
+#   group                  optional
+#   interval               optional, default gatus_default_interval
+#   conditions             optional, default depends on the check type
+#   insecure               optional, skip TLS verification (self-signed backends)
+#   ignore_redirect        optional, do not follow redirects
+#   headers                optional, dict of request headers
+#   dns_query_name         makes it a DNS check; dns_query_type defaults to A
+gatus_endpoints: []
+
+gatus_default_interval: 60s
+gatus_default_http_conditions:
+  - "[STATUS] < 400"
+gatus_default_dns_conditions:
+  - "[DNS_RCODE] == NOERROR"
+
+gatus_alert_failure_threshold: 3
+gatus_alert_success_threshold: 2
+
+# Telegram credentials, read from the operator's environment on the controller.
+gatus_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
+gatus_telegram_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"

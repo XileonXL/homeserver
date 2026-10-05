@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Gatus health checks and status page
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ gatus_user }}
+Group={{ gatus_user }}
+Environment=GATUS_CONFIG_PATH={{ gatus_config_file }}
+EnvironmentFile={{ gatus_env_file }}
+WorkingDirectory={{ gatus_data_dir }}
+ExecStart={{ gatus_binary }}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ gatus_data_dir }}
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

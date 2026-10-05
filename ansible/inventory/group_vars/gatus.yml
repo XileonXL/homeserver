@@ -1,0 +1,30 @@
+---
+# Services are checked directly, not through the reverse proxy, so a proxy
+# failure can be told apart from a service failure.
+gatus_endpoints:
+  - name: Proxmox
+    group: Infrastructure
+    url: https://192.168.1.50:8006
+    insecure: true
+  - name: Reverse proxy
+    group: Infrastructure
+    # Caddy only answers for known host names and the container may not resolve
+    # homeserver.lan, so ask by address with the Host header set and expect the
+    # HTTPS redirect without following it.
+    url: http://192.168.1.64
+    headers:
+      Host: homeserver.lan
+    ignore_redirect: true
+    conditions:
+      - "[STATUS] == 308"
+  - name: Pi-hole web
+    group: DNS
+    url: http://192.168.1.60/admin/
+  - name: Pi-hole DNS
+    group: DNS
+    url: 192.168.1.60
+    dns_query_name: example.com
+    dns_query_type: A
+  - name: Home Assistant
+    group: Home
+    url: http://192.168.1.62

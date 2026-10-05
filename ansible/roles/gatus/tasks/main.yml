@@ -1,0 +1,153 @@
+---
+- name: Fail without Telegram credentials
+  ansible.builtin.assert:
+    that:
+      - gatus_telegram_bot_token | length > 0
+      - gatus_telegram_chat_id | length > 0
+    fail_msg: >-
+      TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must both be set in the environment.
+      Export them and run again.
+    quiet: true
+  no_log: true
+  # Check mode must work before the first install.
+  when: not ansible_check_mode
+
+- name: Install build prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - git
+      - golang-go
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the gatus system user
+  ansible.builtin.user:
+    name: "{{ gatus_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ gatus_data_dir }}"
+    create_home: false
+  register: gatus_user_result
+
+# The user does not exist in check mode on a fresh host, so everything that
+# names it as an owner is skipped there.
+- name: Configure and run Gatus
+  when: not (ansible_check_mode and gatus_user_result is changed)
+  block:
+    - name: Create the configuration directory
+      ansible.builtin.file:
+        path: "{{ gatus_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create the data directory
+      ansible.builtin.file:
+        path: "{{ gatus_data_dir }}"
+        state: directory
+        owner: "{{ gatus_user }}"
+        group: "{{ gatus_user }}"
+        mode: "0750"
+
+    - name: Check for the version marker
+      ansible.builtin.stat:
+        path: "{{ gatus_version_file }}"
+      register: gatus_version_stat
+
+    - name: Read the installed version
+      ansible.builtin.slurp:
+        src: "{{ gatus_version_file }}"
+      register: gatus_version_slurp
+      when: gatus_version_stat.stat.exists
+
+    - name: Set the installed version
+      ansible.builtin.set_fact:
+        gatus_installed_version: >-
+          {{ (gatus_version_slurp.content | b64decode | trim) if gatus_version_stat.stat.exists else '' }}
+
+    - name: Build Gatus from source
+      when:
+        - not ansible_check_mode
+        - gatus_installed_version != gatus_version
+      environment:
+        GOTOOLCHAIN: auto
+        CGO_ENABLED: "0"
+        GOPATH: "{{ gatus_build_dir }}/.gopath"
+        GOCACHE: "{{ gatus_build_dir }}/.gocache"
+      block:
+        - name: Clone the Gatus tag
+          ansible.builtin.git:
+            repo: "{{ gatus_repo_url }}"
+            dest: "{{ gatus_build_dir }}"
+            version: "{{ gatus_version }}"
+            depth: 1
+            force: true
+
+        - name: Compile the Gatus binary
+          ansible.builtin.command:
+            argv:
+              - go
+              - build
+              - -buildvcs=false
+              - -o
+              - "{{ gatus_binary }}"
+              - .
+            chdir: "{{ gatus_build_dir }}"
+          changed_when: true
+          notify: Restart gatus
+
+        - name: Record the installed version
+          ansible.builtin.copy:
+            content: "{{ gatus_version }}\n"
+            dest: "{{ gatus_version_file }}"
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Remove the build directory
+          ansible.builtin.file:
+            path: "{{ gatus_build_dir }}"
+            state: absent
+
+    - name: Write the secrets file
+      ansible.builtin.copy:
+        content: |
+          TELEGRAM_BOT_TOKEN="{{ gatus_telegram_bot_token }}"
+          TELEGRAM_CHAT_ID="{{ gatus_telegram_chat_id }}"
+        dest: "{{ gatus_env_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      notify: Restart gatus
+
+    - name: Render the Gatus configuration
+      ansible.builtin.template:
+        src: config.yaml.j2
+        dest: "{{ gatus_config_file }}"
+        owner: root
+        group: "{{ gatus_user }}"
+        mode: "0640"
+      notify: Restart gatus
+
+    - name: Install the systemd unit
+      ansible.builtin.template:
+        src: gatus.service.j2
+        dest: /etc/systemd/system/gatus.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart gatus
+
+    - name: Enable and start Gatus
+      ansible.builtin.service:
+        name: gatus
+        state: started
+        enabled: true
+      # In check mode on a fresh host the unit has not been written.
+      when: not ansible_check_mode
