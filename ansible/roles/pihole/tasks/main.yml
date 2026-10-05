@@ -37,8 +37,25 @@
     mode: "0700"
   when: not pihole_stat.stat.exists
 
-# Installed with its defaults and configured afterwards through pihole-FTL, so
-# nothing depends on how the installer expects to be pre-seeded.
+# Without an existing pihole.toml the installer opens its dialogs even with
+# --unattended, and waits forever when there is no terminal.
+- name: Create the Pi-hole configuration directory
+  ansible.builtin.file:
+    path: /etc/pihole
+    state: directory
+    mode: "0755"
+  when: not pihole_stat.stat.exists
+
+- name: Seed pihole.toml so the installer runs unattended
+  ansible.builtin.copy:
+    dest: /etc/pihole/pihole.toml
+    content: |
+      [dns]
+      upstreams = {{ pihole_upstream_dns | to_json }}
+    mode: "0644"
+    force: false
+  when: not pihole_stat.stat.exists
+
 - name: Install Pi-hole
   ansible.builtin.command:
     argv:
@@ -46,6 +63,9 @@
       - "{{ pihole_installer_path }}"
       - --unattended
     creates: "{{ pihole_binary }}"
+  # FTL can keep serving the empty gravity database it opened before the installer
+  # filled it, and then blocks nothing until it is restarted.
+  notify: Restart pihole-FTL
 
 # Neither the FTL config nor the service exist before the install, so check mode
 # stops here on a host without Pi-hole.
@@ -92,6 +112,78 @@
       changed_when: true
       notify: Restart pihole-FTL
       when: pihole_listening.stdout | trim != pihole_listening_mode
+
+    - name: Read the NTP sync setting
+      ansible.builtin.command: pihole-FTL --config ntp.sync.active
+      register: pihole_ntp_sync_current
+      changed_when: false
+      check_mode: false
+
+    - name: Set the NTP sync setting
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - --config
+          - ntp.sync.active
+          - "{{ pihole_ntp_sync | string | lower }}"
+      changed_when: true
+      notify: Restart pihole-FTL
+      when: (pihole_ntp_sync_current.stdout | trim | lower) != (pihole_ntp_sync | string | lower)
+
+    - name: Build the gravity database if it does not exist
+      ansible.builtin.command:
+        argv:
+          - "{{ pihole_binary }}"
+          - -g
+        creates: "{{ pihole_gravity_db }}"
+
+    - name: Read the configured blocklists
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - sqlite3
+          - "{{ pihole_gravity_db }}"
+          - SELECT address FROM adlist;
+      register: pihole_adlists_current
+      changed_when: false
+      check_mode: false
+
+    - name: Add missing blocklists
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - sqlite3
+          - "{{ pihole_gravity_db }}"
+          - >-
+            INSERT INTO adlist (address, comment)
+            VALUES ('{{ item | replace("'", "''") }}', 'Managed by Ansible');
+      loop: "{{ pihole_adlists | difference(pihole_adlists_current.stdout_lines) }}"
+      changed_when: true
+      register: pihole_adlists_added
+
+    # The installer can leave the blocklists subscribed but never downloaded, in
+    # which case Pi-hole resolves everything and filters nothing.
+    - name: Count the domains in gravity
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - sqlite3
+          - "{{ pihole_gravity_db }}"
+          - SELECT COUNT(*) FROM gravity;
+      register: pihole_gravity_count
+      changed_when: false
+      check_mode: false
+
+    - name: Update gravity
+      ansible.builtin.command:
+        argv:
+          - "{{ pihole_binary }}"
+          - -g
+      changed_when: true
+      notify: Restart pihole-FTL
+      when: >-
+        pihole_adlists_added is changed
+        or (pihole_gravity_count.stdout | trim | int) == 0
 
     # The value is hashed by FTL, so it cannot be compared; a non-empty variable
     # is always applied. It is visible in the container's process list while the

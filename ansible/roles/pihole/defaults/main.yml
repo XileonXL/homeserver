@@ -8,11 +8,21 @@ pihole_upstream_dns:
 # arrive source-NATed to the Proxmox host (192.168.1.50), so they look local.
 pihole_listening_mode: LOCAL
 
+# Pi-hole's own clock sync. The operating system already keeps the time, and an
+# unprivileged container is not allowed to set it, so FTL would log an error
+# every ten minutes.
+pihole_ntp_sync: false
+
 # Web admin password, read from the operator's environment on the controller.
 # Required on first install. Afterwards, export it only to set or change the
 # password; it cannot be read back, so a non-empty value is always applied.
 pihole_web_password: "{{ lookup('ansible.builtin.env', 'PIHOLE_WEB_PASSWORD') }}"
 
+# Blocklists that must be present. Lists added by hand in the web UI are left alone.
+pihole_adlists:
+  - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+
 pihole_installer_url: https://install.pi-hole.net
 pihole_installer_path: /usr/local/src/pihole-basic-install.sh
 pihole_binary: /usr/local/bin/pihole
+pihole_gravity_db: /etc/pihole/gravity.db
