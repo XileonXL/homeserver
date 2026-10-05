@@ -17,7 +17,7 @@ you can change.
 | Home Assistant OS | VM | `192.168.1.62` | home automation |
 | Caddy | LXC | `192.168.1.64` | HTTPS reverse proxy, so services are reached by name with no ports |
 | Gatus | LXC | `192.168.1.61` | status page and service checks, with alerts through Telegram |
-| Jellyfin and qBittorrent | LXC | `192.168.1.63` | media library on a dedicated disk, and a torrent client that downloads onto it |
+| Jellyfin, qBittorrent, Prowlarr | LXC | `192.168.1.63` | media library on a dedicated disk, a torrent client that downloads onto it, and a search front end for it |
 
 The host also sends its own alerts to Telegram: Proxmox notifications and a warning
 before the guest storage fills up.
