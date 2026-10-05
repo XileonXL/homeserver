@@ -1,0 +1,18 @@
+---
+# Official Jellyfin apt repository; the suite is the Debian release name.
+jellyfin_repo_url: https://repo.jellyfin.org/debian
+jellyfin_repo_suite: "{{ ansible_facts['distribution_release'] }}"
+jellyfin_repo_key_url: https://repo.jellyfin.org/jellyfin_team.gpg.key
+
+# Group shared by Jellyfin and the torrent client, so that downloads are readable
+# by Jellyfin. The gid is fixed so that it is the same on every install.
+jellyfin_media_group: media
+jellyfin_media_gid: 1100
+
+# Where the media disk appears inside the container (see media_disk).
+jellyfin_media_path: /media
+
+# Library directories under the media path; add them as libraries in the web UI.
+jellyfin_library_dirs:
+  - movies
+  - shows

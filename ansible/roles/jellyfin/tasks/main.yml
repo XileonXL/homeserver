@@ -1,0 +1,88 @@
+---
+- name: Check whether the media disk is mounted
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --noheadings
+      - --mountpoint
+      - "{{ jellyfin_media_path }}"
+  register: jellyfin_findmnt
+  changed_when: false
+  failed_when: jellyfin_findmnt.rc not in [0, 1]
+  check_mode: false
+
+- name: Assert the media disk is mounted
+  ansible.builtin.assert:
+    that: jellyfin_findmnt.rc == 0
+    fail_msg: >-
+      {{ jellyfin_media_path }} is not a mount point, so the libraries would be
+      created on the container's root disk. Run the proxmox play with the media
+      disk attached (the container must exist) and try again.
+    quiet: true
+
+- name: Create the shared media group
+  ansible.builtin.group:
+    name: "{{ jellyfin_media_group }}"
+    gid: "{{ jellyfin_media_gid }}"
+    system: true
+  register: jellyfin_group
+
+- name: Gather package facts
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Install repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian # required by deb822_repository
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Add the Jellyfin apt repository
+  ansible.builtin.deb822_repository:
+    name: jellyfin
+    types: deb
+    uris: "{{ jellyfin_repo_url }}"
+    suites: "{{ jellyfin_repo_suite }}"
+    components: main
+    signed_by: "{{ jellyfin_repo_key_url }}"
+    state: present
+  register: jellyfin_repo
+
+- name: Install Jellyfin
+  ansible.builtin.apt:
+    name: jellyfin
+    state: present
+    update_cache: "{{ jellyfin_repo is changed }}"
+  # In check mode the repository above is not really added, so the package is unknown.
+  when: not (ansible_check_mode and jellyfin_repo is changed)
+
+# The jellyfin user is created by the package, and the group by the task above.
+- name: Configure and run Jellyfin
+  when: >-
+    not ansible_check_mode
+    or ('jellyfin' in ansible_facts['packages'] and jellyfin_group is not changed)
+  block:
+    - name: Add the jellyfin user to the media group
+      ansible.builtin.user:
+        name: jellyfin
+        groups: "{{ jellyfin_media_group }}"
+        append: true
+      notify: Restart jellyfin
+
+    - name: Create the library directories
+      ansible.builtin.file:
+        path: "{{ jellyfin_media_path }}/{{ item }}"
+        state: directory
+        owner: root
+        group: "{{ jellyfin_media_group }}"
+        mode: "2775"
+      loop: "{{ jellyfin_library_dirs }}"
+
+    - name: Enable and start Jellyfin
+      ansible.builtin.service:
+        name: jellyfin
+        state: started
+        enabled: true
