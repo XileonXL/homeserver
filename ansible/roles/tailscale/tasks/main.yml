@@ -1,0 +1,88 @@
+---
+- name: Install python3-debian (required by deb822_repository)
+  ansible.builtin.apt:
+    name: python3-debian
+    state: present
+
+- name: Add Tailscale apt repository
+  ansible.builtin.deb822_repository:
+    name: tailscale
+    types: deb
+    uris: "https://pkgs.tailscale.com/stable/debian"
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: main
+    signed_by: "https://pkgs.tailscale.com/stable/debian/{{ ansible_facts['distribution_release'] }}.noarmor.gpg"
+    state: present
+  register: tailscale_repo
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: "{{ tailscale_repo is changed }}"
+  # In check mode the repository above is not really added, so the package is unknown.
+  when: not (ansible_check_mode and tailscale_repo is changed)
+
+- name: Enable and start tailscaled
+  ansible.builtin.service:
+    name: tailscaled
+    state: started
+    enabled: true
+  when: not (ansible_check_mode and tailscale_repo is changed)
+
+- name: Enable IP forwarding for subnet routing
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-tailscale.conf
+    content: |
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sysctl
+  when: tailscale_advertise_routes | length > 0
+
+- name: Flush handlers so forwarding is active before joining
+  ansible.builtin.meta: flush_handlers
+
+# The node state cannot be read before the package exists, so check mode stops here.
+- name: Join the tailnet and converge routes
+  when: not ansible_check_mode
+  block:
+    - name: Read Tailscale status
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_status
+      changed_when: false
+      failed_when: tailscale_status.stdout | length == 0
+
+    - name: Fail when login is needed but no auth key was provided
+      ansible.builtin.assert:
+        that: tailscale_authkey | length > 0
+        fail_msg: >-
+          Node is not logged in (BackendState is
+          {{ (tailscale_status.stdout | from_json).BackendState }}).
+          Export TAILSCALE_AUTHKEY and run again.
+        quiet: true
+      when: (tailscale_status.stdout | from_json).BackendState != 'Running'
+
+    - name: Join the tailnet
+      ansible.builtin.command:
+        argv: >-
+          {{ ['tailscale', 'up', '--auth-key=' ~ tailscale_authkey]
+             + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
+                if tailscale_advertise_routes | length > 0 else []) }}
+      changed_when: true
+      no_log: true
+      when: (tailscale_status.stdout | from_json).BackendState != 'Running'
+
+    - name: Read current Tailscale preferences
+      ansible.builtin.command: tailscale debug prefs
+      register: tailscale_prefs
+      changed_when: false
+
+    - name: Converge advertised routes
+      ansible.builtin.command: "tailscale set --advertise-routes={{ tailscale_advertise_routes | join(',') }}"
+      changed_when: true
+      when: >-
+        ((tailscale_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort)
+        != (tailscale_advertise_routes | sort)

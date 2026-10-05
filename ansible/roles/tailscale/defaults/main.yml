@@ -1,0 +1,7 @@
+---
+# CIDRs to advertise as a subnet router. Empty means a plain client.
+tailscale_advertise_routes: []
+
+# Only needed while the node is logged out. Read from the operator's
+# environment on the controller; never stored in the repository.
+tailscale_authkey: "{{ lookup('ansible.builtin.env', 'TAILSCALE_AUTHKEY') }}"
