@@ -68,6 +68,14 @@ variable "containers" {
       swap   = 512
       disk   = 8
     }
+    media = {
+      vm_id  = 163
+      ip     = "192.168.1.63"
+      cores  = 2
+      memory = 2048
+      swap   = 512
+      disk   = 16
+    }
   }
 }
 
@@ -87,7 +95,7 @@ variable "homeassistant" {
   default = {
     vm_id  = 162
     cores  = 4
-    memory = 4096
+    memory = 2048
     disk   = 64
   }
 }

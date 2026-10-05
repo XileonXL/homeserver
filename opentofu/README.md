@@ -5,11 +5,10 @@ there: everything inside a guest is configured by [Ansible](../ansible/README.md
 
 Everything lives in `envs/homeserver/`. Addresses, the node name, the containers and the
 VM size are variables in `variables.tf`; adding a container is one more entry in
-`containers`. Two guests exist so far: the `pihole` container and the
-`homeassistant` virtual machine.
+`containers`.
 
 Home Assistant OS is an appliance: no cloud-init and no SSH. OpenTofu does not set
-its IP address; set it in Home Assistant's own web UI. The VM is protected with
+its IP address; the `haos_network` Ansible role does. The VM is protected with
 `prevent_destroy` because its disk holds data this repository cannot regenerate.
 
 ## Prerequisites

@@ -62,9 +62,11 @@ resource "proxmox_virtual_environment_container" "this" {
   lifecycle {
     # A newer template or a changed key would force replacement of a running
     # container. Both only matter at creation time; later changes are Ansible's job.
+    # Bind mounts can only be set by root on the node, so Ansible adds them.
     ignore_changes = [
       operating_system[0].template_file_id,
       initialization[0].user_account,
+      mount_point,
     ]
   }
 }
