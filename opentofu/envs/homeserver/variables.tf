@@ -60,6 +60,14 @@ variable "containers" {
       swap   = 256
       disk   = 4
     }
+    gatus = {
+      vm_id  = 161
+      ip     = "192.168.1.61"
+      cores  = 1
+      memory = 1024
+      swap   = 512
+      disk   = 8
+    }
   }
 }
 
