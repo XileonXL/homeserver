@@ -176,6 +176,8 @@
       delegate_to: localhost
       become: false
       no_log: true
+      # The token is not created in check mode, so there is nothing to store.
+      when: not ansible_check_mode
 
   rescue:
     # Without this, a failed write would leave a token whose secret is lost, and
@@ -206,14 +208,20 @@
 
 - name: Find an existing template
   ansible.builtin.set_fact:
-    proxmox_terraform_template_name: >-
+    proxmox_terraform_template_existing: >-
       {{ proxmox_terraform_pveam_list.stdout
          | regex_findall('(?m)^' ~ proxmox_terraform_template_storage ~ ':vztmpl/('
-                         ~ proxmox_terraform_template_prefix ~ '\S+)')
+                         ~ proxmox_terraform_template_prefix ~ '\S*_'
+                         ~ proxmox_terraform_template_arch ~ '\.tar\.\S+)')
          | sort | last | default('', true) }}
 
+# In check mode the catalogue is not refreshed, so it may be empty or missing.
+# The condition is re-evaluated for every task in the block, so it must not depend
+# on a fact that the block itself sets.
 - name: Download a template when none exists
-  when: proxmox_terraform_template_name == ''
+  when:
+    - proxmox_terraform_template_existing == ''
+    - not ansible_check_mode
   block:
     - name: Refresh the template catalogue
       ansible.builtin.command: pveam update
@@ -229,13 +237,16 @@
       ansible.builtin.set_fact:
         proxmox_terraform_template_name: >-
           {{ proxmox_terraform_pveam_available.stdout
-             | regex_findall('(?m)\s(' ~ proxmox_terraform_template_prefix ~ '\S+)$')
+             | regex_findall('(?m)\s(' ~ proxmox_terraform_template_prefix ~ '\S*_'
+                             ~ proxmox_terraform_template_arch ~ '\.tar\.\S+)$')
              | sort | last | default('', true) }}
 
     - name: Assert a template was found
       ansible.builtin.assert:
         that: proxmox_terraform_template_name != ''
-        fail_msg: "No {{ proxmox_terraform_template_prefix }}* template in 'pveam available --section system'."
+        fail_msg: >-
+          No {{ proxmox_terraform_template_prefix }}*_{{ proxmox_terraform_template_arch }}
+          template in 'pveam available --section system'.
         quiet: true
 
     - name: Download the template
@@ -247,6 +258,11 @@
           - "{{ proxmox_terraform_template_name }}"
       changed_when: true
 
+- name: Reuse the existing template
+  ansible.builtin.set_fact:
+    proxmox_terraform_template_name: "{{ proxmox_terraform_template_existing }}"
+  when: proxmox_terraform_template_existing != ''
+
 - name: Hand the template volume id to Terraform
   ansible.builtin.copy:
     dest: "{{ proxmox_terraform_tfvars_file | realpath }}"
@@ -255,3 +271,4 @@
     mode: "0644"
   delegate_to: localhost
   become: false
+  when: proxmox_terraform_template_name | default('') != ''

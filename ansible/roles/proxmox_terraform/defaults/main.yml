@@ -33,4 +33,6 @@ proxmox_terraform_env_file: "{{ playbook_dir }}/../.env"
 # always reused, so Terraform never sees a template change.
 proxmox_terraform_template_storage: local
 proxmox_terraform_template_prefix: debian-13-standard_
+# The catalogue also lists templates for other architectures.
+proxmox_terraform_template_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
 proxmox_terraform_tfvars_file: "{{ playbook_dir }}/../terraform/envs/homelab/lxc_template.auto.tfvars.json"
