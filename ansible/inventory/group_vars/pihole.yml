@@ -12,3 +12,9 @@ pihole_local_dns_records:
     ip: 192.168.1.64
   - name: status.homeserver.lan
     ip: 192.168.1.64
+  - name: jellyfin.homeserver.lan
+    ip: 192.168.1.64
+  - name: torrent.homeserver.lan
+    ip: 192.168.1.64
+  - name: prowlarr.homeserver.lan
+    ip: 192.168.1.64

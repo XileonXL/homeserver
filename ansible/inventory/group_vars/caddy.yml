@@ -19,3 +19,15 @@ caddy_sites:
     title: Status
     icon: fas fa-heart-pulse
     upstream: http://192.168.1.61:8080
+  - name: jellyfin.homeserver.lan
+    title: Jellyfin
+    icon: fas fa-film
+    upstream: http://192.168.1.63:8096
+  - name: torrent.homeserver.lan
+    title: Downloads
+    icon: fas fa-download
+    upstream: http://192.168.1.63:8080
+  - name: prowlarr.homeserver.lan
+    title: Search
+    icon: fas fa-magnifying-glass
+    upstream: http://192.168.1.63:9696
