@@ -8,6 +8,10 @@ pihole_upstream_dns:
 # arrive source-NATed to the Proxmox host (192.168.1.50), so they look local.
 pihole_listening_mode: LOCAL
 
+# Names that Pi-hole answers itself, as a list of {name, ip}. Records added by
+# hand in the web UI are replaced by this list.
+pihole_local_dns_records: []
+
 # Pi-hole's own clock sync. The operating system already keeps the time, and an
 # unprivileged container is not allowed to set it, so FTL would log an error
 # every ten minutes.

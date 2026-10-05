@@ -113,6 +113,34 @@
       notify: Restart pihole-FTL
       when: pihole_listening.stdout | trim != pihole_listening_mode
 
+    - name: Read the local DNS records
+      ansible.builtin.command: pihole-FTL --config dns.hosts
+      register: pihole_dns_hosts_current
+      changed_when: false
+      check_mode: false
+
+    - name: Set the local DNS records
+      ansible.builtin.command:
+        argv:
+          - pihole-FTL
+          - --config
+          - dns.hosts
+          - "{{ pihole_dns_hosts_desired | to_json }}"
+      changed_when: true
+      notify: Restart pihole-FTL
+      when: pihole_dns_hosts_parsed != pihole_dns_hosts_desired
+      vars:
+        pihole_dns_hosts_desired: >-
+          {{ pihole_local_dns_records | map(attribute='ip')
+             | zip(pihole_local_dns_records | map(attribute='name'))
+             | map('join', ' ') | list }}
+        # FTL prints the array as '[ a b, c d ]'.
+        pihole_dns_hosts_parsed: >-
+          {{ (pihole_dns_hosts_current.stdout | trim
+              | regex_replace('^\[\s*', '') | regex_replace('\s*\]$', '')).split(',')
+             | map('trim') | map('regex_replace', '^"|"$', '')
+             | reject('equalto', '') | list }}
+
     - name: Read the NTP sync setting
       ansible.builtin.command: pihole-FTL --config ntp.sync.active
       register: pihole_ntp_sync_current
