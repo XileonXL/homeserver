@@ -27,7 +27,10 @@ gatus_port: 8080
 gatus_endpoints: []
 
 gatus_default_interval: 60s
+# A request that never connects reports status 0, which is below 400, so the
+# connection itself has to be a condition or a dead service counts as healthy.
 gatus_default_http_conditions:
+  - "[CONNECTED] == true"
   - "[STATUS] < 400"
 gatus_default_dns_conditions:
   - "[DNS_RCODE] == NOERROR"
