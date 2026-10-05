@@ -1,0 +1,5 @@
+---
+# Caddy passes the original Host header and sets X-Forwarded-Host; qBittorrent only
+# trusts that header from the proxy.
+qbittorrent_trusted_proxies:
+  - 192.168.1.64

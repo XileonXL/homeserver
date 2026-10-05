@@ -1,0 +1,34 @@
+---
+qbittorrent_binary: /usr/bin/qbittorrent-nox
+qbittorrent_user: qbittorrent
+# The profile directory; qBittorrent keeps its settings in qBittorrent/config below it.
+qbittorrent_home: /var/lib/qbittorrent
+
+# Same group and mount path as the jellyfin role, so that downloads are readable by
+# Jellyfin. The fallbacks only apply when that role is not part of the play.
+qbittorrent_media_group: "{{ jellyfin_media_group | default('media') }}"
+qbittorrent_media_gid: "{{ jellyfin_media_gid | default(1100) }}"
+qbittorrent_media_path: "{{ jellyfin_media_path | default('/media') }}"
+
+# Where a torrent goes when no category is chosen. Torrents are written straight to
+# their final folder, with no separate folder for incomplete downloads, so the media
+# server sees a file while it is still downloading. The folders themselves belong to
+# the jellyfin role.
+qbittorrent_save_path: "{{ qbittorrent_media_path }}/movies"
+# Categories offered when adding a torrent, as name: save path.
+qbittorrent_categories:
+  movies: "{{ qbittorrent_media_path }}/movies"
+  shows: "{{ qbittorrent_media_path }}/shows"
+
+qbittorrent_web_port: 8080
+qbittorrent_web_username: admin
+# Read from the operator's environment on the controller. Required on first install.
+# Afterwards it is only applied when it differs from the stored hash.
+qbittorrent_web_password: "{{ lookup('ansible.builtin.env', 'QBITTORRENT_PASSWORD') }}"
+
+# Host names the web UI answers to; * accepts any, so direct access by address keeps working.
+qbittorrent_web_server_domains: "*"
+
+# Reverse proxies whose X-Forwarded-Host qBittorrent trusts. Needed for the CSRF check
+# to pass behind a proxy that does not pass the Host header through unchanged.
+qbittorrent_trusted_proxies: []

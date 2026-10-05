@@ -1,0 +1,17 @@
+[Unit]
+Description=qBittorrent (headless)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{ qbittorrent_user }}
+Group={{ qbittorrent_media_group }}
+# Group-writable downloads, so that the shared group can manage them.
+UMask=0002
+ExecStart={{ qbittorrent_binary }} --profile={{ qbittorrent_home }} --confirm-legal-notice
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,41 @@
+---
+qbittorrent_conf_path: "{{ qbittorrent_home }}/qBittorrent/config/qBittorrent.conf"
+qbittorrent_categories_path: "{{ qbittorrent_home }}/qBittorrent/config/categories.json"
+
+# Settings the role owns, as the exact line qBittorrent keeps in its config file.
+# Single quotes: the backslash is part of the key.
+qbittorrent_settings:
+  - section: BitTorrent
+    line: 'Session\DefaultSavePath={{ qbittorrent_save_path }}'
+  - section: BitTorrent
+    line: 'Session\TempPathEnabled=false'
+  - section: BitTorrent
+    line: 'Session\PortForwardingEnabled=false'
+  - section: Preferences
+    line: 'WebUI\Port={{ qbittorrent_web_port }}'
+  - section: Preferences
+    line: 'WebUI\Username={{ qbittorrent_web_username }}'
+  - section: Preferences
+    line: 'WebUI\HostHeaderValidation=true'
+  - section: Preferences
+    line: 'WebUI\ServerDomains={{ qbittorrent_web_server_domains }}'
+  - section: Preferences
+    line: 'WebUI\CSRFProtection=true'
+  - section: Preferences
+    line: 'WebUI\ReverseProxySupportEnabled={{ (qbittorrent_trusted_proxies | length > 0) | string | lower }}'
+  - section: Preferences
+    line: 'WebUI\TrustedReverseProxiesList={{ qbittorrent_trusted_proxies | join(";") }}'
+
+# Reads the password on stdin so that it never shows in the process list. With a
+# salt as argument it reproduces the stored hash, which makes it comparable.
+qbittorrent_pbkdf2_script: |
+  import base64, hashlib, os, sys
+  password = sys.stdin.buffer.read()
+  salt = os.urandom(16)
+  if len(sys.argv) > 1:
+      try:
+          salt = base64.b64decode(sys.argv[1], validate=True)
+      except ValueError:
+          pass
+  key = hashlib.pbkdf2_hmac("sha512", password, salt, 100000, 64)
+  print(base64.b64encode(salt).decode() + ":" + base64.b64encode(key).decode())

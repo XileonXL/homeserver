@@ -1,0 +1,228 @@
+---
+- name: Check whether the media disk is mounted
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --noheadings
+      - --mountpoint
+      - "{{ qbittorrent_media_path }}"
+  register: qbittorrent_findmnt
+  changed_when: false
+  failed_when: qbittorrent_findmnt.rc not in [0, 1]
+  check_mode: false
+
+- name: Assert the media disk is mounted
+  ansible.builtin.assert:
+    that: qbittorrent_findmnt.rc == 0
+    fail_msg: >-
+      {{ qbittorrent_media_path }} is not a mount point, so downloads would fill the
+      container's root disk. Run the proxmox play with the media disk attached (the
+      container must exist) and try again.
+    quiet: true
+
+- name: Install qbittorrent-nox
+  ansible.builtin.apt:
+    name: qbittorrent-nox
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: qbittorrent_package
+
+- name: Create the shared media group
+  ansible.builtin.group:
+    name: "{{ qbittorrent_media_group }}"
+    gid: "{{ qbittorrent_media_gid }}"
+    system: true
+  register: qbittorrent_group
+
+- name: Create the service user
+  ansible.builtin.user:
+    name: "{{ qbittorrent_user }}"
+    group: "{{ qbittorrent_media_group }}"
+    home: "{{ qbittorrent_home }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+  register: qbittorrent_user_result
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: qbittorrent-nox.service.j2
+    dest: /etc/systemd/system/qbittorrent-nox.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Load the unit now
+  ansible.builtin.meta: flush_handlers
+
+# In check mode on a fresh host the user and group do not exist, and tasks that
+# set them as owner would fail.
+- name: Work out whether the service user exists
+  ansible.builtin.set_fact:
+    qbittorrent_ready: >-
+      {{ not (ansible_check_mode
+              and (qbittorrent_package is changed
+                   or qbittorrent_group is changed
+                   or qbittorrent_user_result is changed)) }}
+
+- name: Configure and run qBittorrent
+  when: qbittorrent_ready | bool
+  block:
+    - name: Create the settings directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ qbittorrent_user }}"
+        group: "{{ qbittorrent_media_group }}"
+        mode: "0700"
+      loop:
+        - "{{ qbittorrent_home }}/qBittorrent"
+        - "{{ qbittorrent_home }}/qBittorrent/config"
+
+    - name: Check for an existing configuration file
+      ansible.builtin.stat:
+        path: "{{ qbittorrent_conf_path }}"
+      register: qbittorrent_conf_stat
+
+    - name: Fail on first install without a web password
+      ansible.builtin.assert:
+        that: qbittorrent_web_password | length > 0
+        fail_msg: >-
+          qBittorrent has no configuration yet and QBITTORRENT_PASSWORD is empty.
+          Export it and run again.
+        quiet: true
+      # Check mode must work before the first install.
+      when:
+        - not qbittorrent_conf_stat.stat.exists
+        - not ansible_check_mode
+
+    - name: Read the configuration file
+      ansible.builtin.slurp:
+        src: "{{ qbittorrent_conf_path }}"
+      register: qbittorrent_conf_raw
+      when: qbittorrent_conf_stat.stat.exists
+      no_log: true
+
+    # Quotes are dropped because qBittorrent quotes some values when it rewrites the file.
+    - name: Compare the managed settings with the file
+      ansible.builtin.set_fact:
+        qbittorrent_conf_lines: >-
+          {{ (qbittorrent_conf_raw.content | default('') | b64decode).replace('"', '').splitlines() }}
+      no_log: true
+
+    - name: Work out which settings differ
+      ansible.builtin.set_fact:
+        qbittorrent_stale: "{{ qbittorrent_settings | rejectattr('line', 'in', qbittorrent_conf_lines) | list }}"
+        qbittorrent_pw_stored: >-
+          {{ qbittorrent_conf_lines
+             | map('regex_findall', '^WebUI.Password_PBKDF2=@ByteArray\((.*)\)$')
+             | flatten | first | default('', true) }}
+      no_log: true
+
+    # The same salt is reused, so the hash is reproducible and can be compared.
+    - name: Hash the web password with the stored salt
+      ansible.builtin.command:
+        argv: >-
+          {{ ['python3', '-c', qbittorrent_pbkdf2_script]
+             + ([qbittorrent_pw_stored.split(':')[0]] if ':' in qbittorrent_pw_stored else []) }}
+        stdin: "{{ qbittorrent_web_password }}"
+        stdin_add_newline: false
+      register: qbittorrent_pw_hash
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: qbittorrent_web_password | length > 0
+
+    - name: Work out whether the password differs
+      ansible.builtin.set_fact:
+        qbittorrent_pw_stale: >-
+          {{ qbittorrent_web_password | length > 0
+             and (qbittorrent_pw_hash.stdout | trim) != qbittorrent_pw_stored }}
+      no_log: true
+
+    - name: Check for an existing categories file
+      ansible.builtin.stat:
+        path: "{{ qbittorrent_categories_path }}"
+      register: qbittorrent_categories_stat
+
+    - name: Read the categories file
+      ansible.builtin.slurp:
+        src: "{{ qbittorrent_categories_path }}"
+      register: qbittorrent_categories_raw
+      when: qbittorrent_categories_stat.stat.exists
+
+    # Categories created by hand in the web UI are kept.
+    - name: Work out the categories to write
+      ansible.builtin.set_fact:
+        qbittorrent_categories_current: "{{ qbittorrent_categories_now }}"
+        qbittorrent_categories_wanted: >-
+          {{ qbittorrent_categories_now | combine(dict(qbittorrent_categories.keys()
+             | zip(qbittorrent_categories.values()
+                   | map('regex_replace', '^(.*)$', '{"save_path": "\1"}')
+                   | map('from_json')))) }}
+      vars:
+        qbittorrent_categories_now: >-
+          {{ (qbittorrent_categories_raw.content | b64decode | from_json)
+             if qbittorrent_categories_stat.stat.exists else {} }}
+
+    # qBittorrent rewrites its files when it exits, so they are only edited while stopped.
+    - name: Update the configuration while the service is stopped
+      when: >-
+        (qbittorrent_stale | length > 0) or (qbittorrent_pw_stale | bool)
+        or qbittorrent_categories_current != qbittorrent_categories_wanted
+      block:
+        - name: Stop qBittorrent
+          ansible.builtin.service:
+            name: qbittorrent-nox
+            state: stopped
+
+        # lineinfile does not know sections; a missing header is added at the end of
+        # the file so that the keys below land under it and not under another one.
+        - name: Ensure the section headers exist
+          ansible.builtin.lineinfile:
+            path: "{{ qbittorrent_conf_path }}"
+            regexp: '^\[{{ item }}\]$'
+            line: "[{{ item }}]"
+            create: true
+            owner: "{{ qbittorrent_user }}"
+            group: "{{ qbittorrent_media_group }}"
+            mode: "0600"
+          loop: >-
+            {{ (qbittorrent_stale | map(attribute='section') | list
+                + (['Preferences'] if qbittorrent_pw_stale | bool else [])) | unique }}
+
+        - name: Set the managed settings
+          ansible.builtin.lineinfile:
+            path: "{{ qbittorrent_conf_path }}"
+            regexp: '^{{ item.line.split("=", 1)[0] | regex_escape }}='
+            insertafter: '^\[{{ item.section }}\]$'
+            line: "{{ item.line }}"
+          loop: "{{ qbittorrent_stale }}"
+          loop_control:
+            label: "{{ item.line.split('=', 1)[0] }}"
+
+        - name: Set the web password
+          ansible.builtin.lineinfile:
+            path: "{{ qbittorrent_conf_path }}"
+            regexp: '^WebUI.Password_PBKDF2='
+            insertafter: '^\[Preferences\]$'
+            line: 'WebUI\Password_PBKDF2="@ByteArray({{ qbittorrent_pw_hash.stdout | trim }})"'
+          no_log: true
+          when: qbittorrent_pw_stale | bool
+
+        - name: Write the categories
+          ansible.builtin.copy:
+            dest: "{{ qbittorrent_categories_path }}"
+            content: "{{ qbittorrent_categories_wanted | to_nice_json }}\n"
+            owner: "{{ qbittorrent_user }}"
+            group: "{{ qbittorrent_media_group }}"
+            mode: "0600"
+          when: qbittorrent_categories_current != qbittorrent_categories_wanted
+
+    - name: Enable and start qBittorrent
+      ansible.builtin.service:
+        name: qbittorrent-nox
+        state: started
+        enabled: true
