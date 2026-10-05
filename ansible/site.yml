@@ -4,19 +4,23 @@
   gather_facts: true
 
   roles:
+    - role: proxmox_domain
     - role: tailscale
-    - role: proxmox_terraform
+    - role: proxmox_opentofu
+    - role: haos_image
+    - role: haos_network
 
-- name: Configure Pi-hole
-  hosts: pihole
+# A fresh Debian LXC template may have no Python (or python3-apt), which
+# Ansible modules need. raw works without it. The facts gathered here are kept
+# for the plays that follow.
+- name: Bootstrap Python on LXC containers
+  hosts: lxc
   gather_facts: false
 
-  # A fresh Debian LXC template may have no Python (or python3-apt), which
-  # Ansible modules need. raw works without it.
-  pre_tasks:
+  tasks:
     - name: Check for python3 with the apt bindings
       ansible.builtin.raw: python3 -c 'import apt'
-      register: pihole_python_check
+      register: lxc_python_check
       changed_when: false
       failed_when: false
       check_mode: false
@@ -24,10 +28,21 @@
     - name: Install python3 and python3-apt
       ansible.builtin.raw: apt-get update -qq && apt-get install -y -qq python3 python3-apt
       changed_when: true
-      when: pihole_python_check.rc != 0
+      when: lxc_python_check.rc != 0
 
     - name: Gather facts
       ansible.builtin.setup:
 
+- name: Configure Pi-hole
+  hosts: pihole
+  gather_facts: false
+
   roles:
     - role: pihole
+
+- name: Configure the reverse proxy
+  hosts: caddy
+  gather_facts: false
+
+  roles:
+    - role: caddy

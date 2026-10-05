@@ -1,5 +1,12 @@
 ---
+proxmox_domain_name: homeserver.lan
+
 # Subnet router: advertise the whole LAN. Route approval is done in the
 # Tailscale admin console.
 tailscale_advertise_routes:
   - 192.168.1.0/24
+
+haos_network_address: 192.168.1.62/24
+haos_network_gateway: 192.168.1.1
+haos_network_dns:
+  - 192.168.1.60

@@ -1,14 +1,18 @@
 # ansible
 
-Configures the Proxmox host and the LXC containers. Terraform creates the guests;
+Configures the Proxmox host and the LXC containers. OpenTofu creates the guests;
 Ansible configures what runs on the host and inside them. Home Assistant OS is an
 appliance and is not managed here.
 
 | Role | Applied to | What it does |
 |---|---|---|
+| `proxmox_domain` | `proxmox` | Sets the DNS domain of the node |
 | `tailscale` | `proxmox` | Installs Tailscale; advertises the LAN as a subnet router |
-| `proxmox_terraform` | `proxmox` | Creates the API token for Terraform and downloads the Debian LXC template |
+| `proxmox_opentofu` | `proxmox` | Creates the API token for OpenTofu and downloads the Debian LXC template |
+| `haos_image` | `proxmox` | Downloads the Home Assistant OS disk image for OpenTofu to import |
+| `haos_network` | `proxmox` | Sets the static address of Home Assistant OS through the guest agent |
 | `pihole` | `pihole` | Installs and configures Pi-hole v6 |
+| `caddy` | `caddy` | Reverse proxy: every service as `https://<name>` with Caddy's internal CA |
 
 Hosts and addresses are in `inventory/hosts.yml`; per-group settings in
 `inventory/group_vars/`.
@@ -33,7 +37,7 @@ set -a; source ../.env; set +a
 
 | Variable | Set by | Needed |
 |---|---|---|
-| `PROXMOX_VE_API_TOKEN` | the `proxmox_terraform` role | by Terraform |
+| `PROXMOX_VE_API_TOKEN` | the `proxmox_opentofu` role | by OpenTofu |
 | `TAILSCALE_AUTHKEY` | you | only when a node joins the tailnet |
 | `PIHOLE_WEB_PASSWORD` | you | on the first Pi-hole install, or to change the password |
 
@@ -44,16 +48,18 @@ ansible-playbook site.yml --limit proxmox --check --diff
 ansible-playbook site.yml --limit proxmox
 ```
 
-A container must exist before its play can run, so the order for a new guest is:
+A container must exist before its play can run, so the order for a new guest is
+(for the Home Assistant VM, only steps 1 and 2 apply):
 
 1. `ansible-playbook site.yml --limit proxmox`
-2. Create the container with [Terraform](../terraform/README.md).
+2. Create the guest with [OpenTofu](../opentofu/README.md).
 3. `ansible-playbook site.yml --limit pihole`
+4. `ansible-playbook site.yml --limit caddy`
 
-To replace the Terraform API token:
+To replace the OpenTofu API token:
 
 ```bash
-ansible-playbook site.yml --limit proxmox -e proxmox_terraform_rotate_token=true
+ansible-playbook site.yml --limit proxmox -e proxmox_opentofu_rotate_token=true
 ```
 
 ## Steps that are not on any machine
@@ -62,3 +68,8 @@ ansible-playbook site.yml --limit proxmox -e proxmox_terraform_rotate_token=true
   the host.
 - Router: hand out the Pi-hole address as the primary DNS server. A secondary must
   filter too; see the [network plan](../docs/02-network-plan.md#dns).
+- Every device: install `caddy-root.crt` (written to the repository root by the `caddy`
+  play) as a trusted root certificate.
+- Home Assistant, inside Home Assistant: it rejects proxied requests until
+  `configuration.yaml` has `http:` with `use_x_forwarded_for: true` and
+  `trusted_proxies: [<proxy address>]`.
