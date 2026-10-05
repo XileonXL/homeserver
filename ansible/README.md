@@ -10,7 +10,7 @@ appliance and is not managed here.
 | `tailscale` | `proxmox` | Installs Tailscale; advertises the LAN as a subnet router |
 | `proxmox_opentofu` | `proxmox` | Creates the API token for OpenTofu and downloads the Debian LXC template |
 | `haos_image` | `proxmox` | Downloads the Home Assistant OS disk image for OpenTofu to import |
-| `haos_network` | `proxmox` | Sets the static address of Home Assistant OS through the guest agent |
+| `haos_network` | `proxmox` | Sets the static address of Home Assistant OS and the proxies it trusts, through the guest agent |
 | `pihole` | `pihole` | Installs and configures Pi-hole v6 |
 | `caddy` | `caddy` | Reverse proxy: every service as `https://<name>` with Caddy's internal CA |
 
@@ -70,6 +70,3 @@ ansible-playbook site.yml --limit proxmox -e proxmox_opentofu_rotate_token=true
   filter too; see the [network plan](../docs/02-network-plan.md#dns).
 - Every device: install `caddy-root.crt` (written to the repository root by the `caddy`
   play) as a trusted root certificate.
-- Home Assistant, inside Home Assistant: it rejects proxied requests until
-  `configuration.yaml` has `http:` with `use_x_forwarded_for: true` and
-  `trusted_proxies: [<proxy address>]`.

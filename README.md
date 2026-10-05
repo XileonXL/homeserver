@@ -107,9 +107,7 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    handed out by DHCP. Never add an ordinary public resolver as secondary: see
    [docs/02](docs/02-network-plan.md#dns).
 
-8. **Set up Home Assistant.** Open `http://192.168.1.62:8123` and create your user.
-   To reach it through the proxy, declare the proxy as trusted in its
-   `configuration.yaml`; see [ansible/](ansible/README.md).
+8. **Set up Home Assistant.** Open `http://192.168.1.62` and create your user.
 
 More detail in [ansible/](ansible/README.md) and [opentofu/](opentofu/README.md).
 
