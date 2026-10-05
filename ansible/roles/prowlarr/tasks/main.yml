@@ -1,0 +1,133 @@
+---
+- name: Install Prowlarr dependencies
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - sqlite3
+      - tar
+      - "{{ prowlarr_libicu_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the prowlarr system user
+  ansible.builtin.user:
+    name: "{{ prowlarr_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ prowlarr_data_dir }}"
+    create_home: false
+  register: prowlarr_user_result
+
+# The user does not exist in check mode on a fresh host, so everything that
+# names it as an owner is skipped there.
+- name: Work out whether the service user exists
+  ansible.builtin.set_fact:
+    prowlarr_ready: "{{ not (ansible_check_mode and prowlarr_user_result is changed) }}"
+
+- name: Install and run Prowlarr
+  when: prowlarr_ready | bool
+  block:
+    - name: Create the data directory
+      ansible.builtin.file:
+        path: "{{ prowlarr_data_dir }}"
+        state: directory
+        owner: "{{ prowlarr_user }}"
+        group: "{{ prowlarr_user }}"
+        mode: "0750"
+
+    - name: Check for the version marker
+      ansible.builtin.stat:
+        path: "{{ prowlarr_version_file }}"
+      register: prowlarr_version_stat
+
+    - name: Read the installed version
+      ansible.builtin.slurp:
+        src: "{{ prowlarr_version_file }}"
+      register: prowlarr_version_slurp
+      when: prowlarr_version_stat.stat.exists
+
+    - name: Set the installed version
+      ansible.builtin.set_fact:
+        prowlarr_installed_version: >-
+          {{ (prowlarr_version_slurp.content | b64decode | trim) if prowlarr_version_stat.stat.exists else '' }}
+
+    - name: Replace the program directory
+      when:
+        - not ansible_check_mode
+        - prowlarr_installed_version != prowlarr_version
+      block:
+        - name: Remove the previous program directory
+          ansible.builtin.file:
+            path: "{{ prowlarr_install_dir }}"
+            state: absent
+
+        - name: Create the program directory
+          ansible.builtin.file:
+            path: "{{ prowlarr_install_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        # The archive has one top-level directory, which is stripped.
+        - name: Download and unpack Prowlarr
+          ansible.builtin.unarchive:
+            src: "{{ prowlarr_download_url }}"
+            dest: "{{ prowlarr_install_dir }}"
+            remote_src: true
+            owner: root
+            group: root
+            extra_opts:
+              - --strip-components=1
+          notify: Restart prowlarr
+
+        - name: Check for the Prowlarr executable
+          ansible.builtin.stat:
+            path: "{{ prowlarr_install_dir }}/Prowlarr"
+          register: prowlarr_binary_stat
+
+        - name: Assert the archive had the expected layout
+          ansible.builtin.assert:
+            that:
+              - prowlarr_binary_stat.stat.exists
+              - prowlarr_binary_stat.stat.xusr
+            fail_msg: >-
+              {{ prowlarr_install_dir }}/Prowlarr is missing or not executable after
+              unpacking {{ prowlarr_download_url }}.
+            quiet: true
+
+        # Written last: a failed install leaves no marker and is retried.
+        - name: Record the installed version
+          ansible.builtin.copy:
+            content: "{{ prowlarr_version }}\n"
+            dest: "{{ prowlarr_version_file }}"
+            owner: root
+            group: root
+            mode: "0644"
+
+    # After the program and its directories exist: the restart this triggers would
+    # fail on a host where they are still missing.
+    - name: Install the systemd unit
+      ansible.builtin.template:
+        src: prowlarr.service.j2
+        dest: /etc/systemd/system/prowlarr.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart prowlarr
+
+    - name: Load the unit and apply pending restarts now
+      ansible.builtin.meta: flush_handlers
+      when: not ansible_check_mode
+
+    - name: Enable and start Prowlarr
+      ansible.builtin.service:
+        name: prowlarr
+        state: started
+        enabled: true
+      # In check mode on a fresh host the unit has not been written.
+      when: not ansible_check_mode

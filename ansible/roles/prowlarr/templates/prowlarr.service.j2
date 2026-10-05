@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prowlarr indexer manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{ prowlarr_user }}
+Group={{ prowlarr_user }}
+Environment=HOME={{ prowlarr_data_dir }}
+# The program directory is owned by root, so the built-in updater cannot work.
+Environment=PROWLARR__UPDATE__MECHANISM=external
+WorkingDirectory={{ prowlarr_data_dir }}
+ExecStart={{ prowlarr_install_dir }}/Prowlarr -nobrowser -data={{ prowlarr_data_dir }}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ prowlarr_data_dir }}
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+---
+prowlarr_arch_map:
+  x86_64: x64
+  aarch64: arm64
+
+# Holds the installed version. It lives inside the program directory so that
+# removing the directory also removes the marker.
+prowlarr_version_file: "{{ prowlarr_install_dir }}/.installed-version"

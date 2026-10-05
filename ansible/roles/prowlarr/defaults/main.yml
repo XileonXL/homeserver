@@ -1,0 +1,16 @@
+---
+prowlarr_version: 2.6.5.5623
+# Release asset architecture, derived from the host; see prowlarr_arch_map.
+prowlarr_arch: "{{ prowlarr_arch_map[ansible_facts['architecture']] }}"
+prowlarr_download_url: >-
+  https://github.com/Prowlarr/Prowlarr/releases/download/v{{ prowlarr_version }}/Prowlarr.master.{{ prowlarr_version }}.linux-core-{{ prowlarr_arch }}.tar.gz
+
+prowlarr_install_dir: /opt/Prowlarr
+# Settings, database and logs. Prowlarr creates and rewrites config.xml here itself.
+prowlarr_data_dir: /var/lib/prowlarr
+prowlarr_user: prowlarr
+
+prowlarr_port: 9696
+
+# The ICU library has a versioned package name; this is the one Debian 13 ships.
+prowlarr_libicu_package: libicu76
