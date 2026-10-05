@@ -87,3 +87,72 @@
         haos_network_observed: >-
           {{ ((haos_network_current.stdout | from_json)['out-data'] | default('')).splitlines()
              | map('trim') | list }}
+
+- name: Trust the reverse proxies in Home Assistant
+  when: haos_network_trusted_proxies | length > 0
+  block:
+    - name: Read the stored HTTP settings from the guest
+      ansible.builtin.command:
+        argv:
+          - qm
+          - guest
+          - exec
+          - "{{ haos_network_vm_id }}"
+          - --
+          - cat
+          - "{{ haos_network_http_store }}"
+      register: haos_network_http_raw
+      changed_when: false
+      check_mode: false
+
+    - name: Parse the stored HTTP settings
+      ansible.builtin.set_fact:
+        haos_network_http: "{{ (haos_network_http_raw.stdout | from_json)['out-data'] | from_json }}"
+
+    # The file is internal to Home Assistant; refuse to edit a layout not seen before.
+    - name: Assert the storage layout is the known one
+      ansible.builtin.assert:
+        that:
+          - haos_network_http.key == 'http'
+          - haos_network_http.version == 2
+          - haos_network_http.data.stable is mapping
+        fail_msg: >-
+          Unexpected layout in {{ haos_network_http_store }}. Set the trusted proxies
+          in Home Assistant's own network settings instead.
+        quiet: true
+
+    - name: Write the trusted proxies while the core is stopped
+      when: >-
+        not (haos_network_http.data.stable.use_x_forwarded_for | default(false))
+        or (haos_network_http.data.stable.trusted_proxies | default([]) | sort)
+           != (haos_network_trusted_proxies | sort)
+      vars:
+        haos_network_http_new: >-
+          {{ haos_network_http | combine({'data': {'stable': {
+               'use_x_forwarded_for': true,
+               'trusted_proxies': haos_network_trusted_proxies}}}, recursive=true) }}
+      block:
+        - name: Stop the Home Assistant core
+          ansible.builtin.command:
+            argv: [qm, guest, exec, "{{ haos_network_vm_id }}", --timeout, "180", --, ha, core, stop]
+          changed_when: true
+
+        - name: Write the HTTP settings
+          ansible.builtin.command:
+            argv:
+              - qm
+              - guest
+              - exec
+              - "{{ haos_network_vm_id }}"
+              - --pass-stdin
+              - "1"
+              - --
+              - tee
+              - "{{ haos_network_http_store }}"
+            stdin: "{{ haos_network_http_new | to_nice_json }}"
+          changed_when: true
+
+        - name: Start the Home Assistant core
+          ansible.builtin.command:
+            argv: [qm, guest, exec, "{{ haos_network_vm_id }}", --timeout, "180", --, ha, core, start]
+          changed_when: true

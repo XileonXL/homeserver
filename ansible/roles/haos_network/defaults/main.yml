@@ -6,3 +6,10 @@ haos_network_vm_id: 162
 haos_network_address: ""
 haos_network_gateway: ""
 haos_network_dns: []
+
+# Reverse proxies that Home Assistant must trust; it answers 400 to proxied
+# requests otherwise. Home Assistant keeps its HTTP settings in its own storage
+# and ignores configuration.yaml for them, so they are written there while the
+# core is stopped. Empty does nothing.
+haos_network_trusted_proxies: []
+haos_network_http_store: /mnt/data/supervisor/homeassistant/.storage/http

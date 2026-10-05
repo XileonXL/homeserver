@@ -10,3 +10,5 @@ haos_network_address: 192.168.1.62/24
 haos_network_gateway: 192.168.1.1
 haos_network_dns:
   - 192.168.1.60
+haos_network_trusted_proxies:
+  - 192.168.1.64
