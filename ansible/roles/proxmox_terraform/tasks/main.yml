@@ -1,0 +1,257 @@
+---
+# Read-only queries run in check mode too (check_mode: false); every mutating
+# command is skipped by Ansible in check mode.
+
+- name: Read Proxmox roles
+  ansible.builtin.command: pveum role list --output-format json
+  register: proxmox_terraform_roles
+  changed_when: false
+  check_mode: false
+
+- name: Read Proxmox users
+  ansible.builtin.command: pveum user list --output-format json
+  register: proxmox_terraform_users
+  changed_when: false
+  check_mode: false
+
+- name: Read Proxmox ACLs
+  ansible.builtin.command: pveum acl list --output-format json
+  register: proxmox_terraform_acls
+  changed_when: false
+  check_mode: false
+
+- name: Work out which identity objects exist
+  ansible.builtin.set_fact:
+    proxmox_terraform_role_current: >-
+      {{ proxmox_terraform_roles.stdout | from_json
+         | selectattr('roleid', 'equalto', proxmox_terraform_role) | list }}
+    proxmox_terraform_user_exists: >-
+      {{ (proxmox_terraform_users.stdout | from_json
+          | selectattr('userid', 'equalto', proxmox_terraform_user) | list) | length > 0 }}
+    proxmox_terraform_acl_exists: >-
+      {{ (proxmox_terraform_acls.stdout | from_json
+          | selectattr('path', 'equalto', '/')
+          | selectattr('type', 'equalto', 'user')
+          | selectattr('ugid', 'equalto', proxmox_terraform_user)
+          | selectattr('roleid', 'equalto', proxmox_terraform_role)
+          | selectattr('propagate', 'in', [1, '1', true]) | list) | length > 0 }}
+
+# pveum reports privileges as a comma separated string.
+- name: Compare role privileges with the desired set
+  ansible.builtin.set_fact:
+    proxmox_terraform_role_exists: "{{ proxmox_terraform_role_current | length > 0 }}"
+    proxmox_terraform_role_in_sync: >-
+      {{ proxmox_terraform_role_current | length > 0
+         and ((proxmox_terraform_role_current[0].privs | default('', true)).split(',')
+              | reject('equalto', '') | sort)
+             == (proxmox_terraform_privileges | sort) }}
+
+- name: Create the Terraform role
+  ansible.builtin.command:
+    argv:
+      - pveum
+      - role
+      - add
+      - "{{ proxmox_terraform_role }}"
+      - --privs
+      - "{{ proxmox_terraform_privileges | join(',') }}"
+  changed_when: true
+  when: not proxmox_terraform_role_exists | bool
+
+- name: Converge the Terraform role privileges
+  ansible.builtin.command:
+    argv:
+      - pveum
+      - role
+      - modify
+      - "{{ proxmox_terraform_role }}"
+      - --privs
+      - "{{ proxmox_terraform_privileges | join(',') }}"
+  changed_when: true
+  when:
+    - proxmox_terraform_role_exists | bool
+    - not proxmox_terraform_role_in_sync | bool
+
+- name: Create the Terraform user
+  ansible.builtin.command:
+    argv:
+      - pveum
+      - user
+      - add
+      - "{{ proxmox_terraform_user }}"
+      - --comment
+      - Terraform (bpg/proxmox provider)
+  changed_when: true
+  when: not proxmox_terraform_user_exists | bool
+
+- name: Grant the role to the user on / with propagation
+  ansible.builtin.command:
+    argv:
+      - pveum
+      - acl
+      - modify
+      - /
+      - --users
+      - "{{ proxmox_terraform_user }}"
+      - --roles
+      - "{{ proxmox_terraform_role }}"
+      - --propagate
+      - "1"
+  changed_when: true
+  when: not proxmox_terraform_acl_exists | bool
+
+# The user cannot be listed for tokens before it exists (check mode, first run).
+- name: Read the user's API tokens
+  ansible.builtin.command: "pveum user token list {{ proxmox_terraform_user }} --output-format json"
+  register: proxmox_terraform_tokens
+  changed_when: false
+  check_mode: false
+  when: proxmox_terraform_user_exists | bool
+
+- name: Work out the token state
+  ansible.builtin.set_fact:
+    proxmox_terraform_token_current: >-
+      {{ (proxmox_terraform_tokens.stdout | from_json
+          | selectattr('tokenid', 'equalto', proxmox_terraform_token_name) | list)
+         if proxmox_terraform_user_exists | bool else [] }}
+
+- name: Assert the existing token has privilege separation disabled
+  ansible.builtin.assert:
+    that: (proxmox_terraform_token_current[0].privsep | default(0) | int) == 0
+    fail_msg: >-
+      Token {{ proxmox_terraform_user }}!{{ proxmox_terraform_token_name }} has privilege
+      separation enabled and would have no permissions. Run with
+      -e proxmox_terraform_rotate_token=true to recreate it.
+    quiet: true
+  when:
+    - proxmox_terraform_token_current | length > 0
+    - not proxmox_terraform_rotate_token | bool
+
+- name: Create the API token and store it in the controller's .env file
+  when: >-
+    proxmox_terraform_token_current | length == 0
+    or proxmox_terraform_rotate_token | bool
+  block:
+    - name: Delete the existing API token (rotation)
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - token
+          - remove
+          - "{{ proxmox_terraform_user }}"
+          - "{{ proxmox_terraform_token_name }}"
+      changed_when: true
+      when: proxmox_terraform_token_current | length > 0
+
+    # The secret is printed only once, in this command's output.
+    - name: Create the API token
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - token
+          - add
+          - "{{ proxmox_terraform_user }}"
+          - "{{ proxmox_terraform_token_name }}"
+          - --privsep
+          - "0"
+          - --output-format
+          - json
+      register: proxmox_terraform_token_new
+      changed_when: true
+      no_log: true
+
+    # Single quotes: the token id contains '!', which a shell sourcing the file
+    # must not interpret.
+    - name: Store the token in the controller's .env file
+      ansible.builtin.lineinfile:
+        path: "{{ proxmox_terraform_env_file | realpath }}"
+        regexp: '^PROXMOX_VE_API_TOKEN='
+        line: >-
+          PROXMOX_VE_API_TOKEN='{{ proxmox_terraform_user }}!{{ proxmox_terraform_token_name }}={{
+          (proxmox_terraform_token_new.stdout | from_json).value }}'
+        create: true
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+  rescue:
+    # Without this, a failed write would leave a token whose secret is lost, and
+    # the next run would see it and do nothing.
+    - name: Remove the token whose secret could not be stored
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - token
+          - remove
+          - "{{ proxmox_terraform_user }}"
+          - "{{ proxmox_terraform_token_name }}"
+      changed_when: true
+      failed_when: false
+
+    - name: Fail after cleaning up the token
+      ansible.builtin.fail:
+        msg: >-
+          Creating the API token or storing it in the .env file failed. The token was
+          removed; run again.
+
+- name: List LXC templates already on the storage
+  ansible.builtin.command: "pveam list {{ proxmox_terraform_template_storage }}"
+  register: proxmox_terraform_pveam_list
+  changed_when: false
+  check_mode: false
+
+- name: Find an existing template
+  ansible.builtin.set_fact:
+    proxmox_terraform_template_name: >-
+      {{ proxmox_terraform_pveam_list.stdout
+         | regex_findall('(?m)^' ~ proxmox_terraform_template_storage ~ ':vztmpl/('
+                         ~ proxmox_terraform_template_prefix ~ '\S+)')
+         | sort | last | default('', true) }}
+
+- name: Download a template when none exists
+  when: proxmox_terraform_template_name == ''
+  block:
+    - name: Refresh the template catalogue
+      ansible.builtin.command: pveam update
+      changed_when: true
+
+    - name: List available system templates
+      ansible.builtin.command: pveam available --section system
+      register: proxmox_terraform_pveam_available
+      changed_when: false
+      check_mode: false
+
+    - name: Pick the newest matching template
+      ansible.builtin.set_fact:
+        proxmox_terraform_template_name: >-
+          {{ proxmox_terraform_pveam_available.stdout
+             | regex_findall('(?m)\s(' ~ proxmox_terraform_template_prefix ~ '\S+)$')
+             | sort | last | default('', true) }}
+
+    - name: Assert a template was found
+      ansible.builtin.assert:
+        that: proxmox_terraform_template_name != ''
+        fail_msg: "No {{ proxmox_terraform_template_prefix }}* template in 'pveam available --section system'."
+        quiet: true
+
+    - name: Download the template
+      ansible.builtin.command:
+        argv:
+          - pveam
+          - download
+          - "{{ proxmox_terraform_template_storage }}"
+          - "{{ proxmox_terraform_template_name }}"
+      changed_when: true
+
+- name: Hand the template volume id to Terraform
+  ansible.builtin.copy:
+    dest: "{{ proxmox_terraform_tfvars_file | realpath }}"
+    content: |
+      {{ {'lxc_template_file_id': proxmox_terraform_template_storage ~ ':vztmpl/' ~ proxmox_terraform_template_name} | to_json }}
+    mode: "0644"
+  delegate_to: localhost
+  become: false

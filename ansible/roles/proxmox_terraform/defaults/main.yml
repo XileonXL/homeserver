@@ -1,0 +1,36 @@
+---
+# Custom role for the bpg/proxmox Terraform provider. Proxmox VE 9 privilege names
+# (VM.Monitor no longer exists). If the role on the host differs, it is converged.
+proxmox_terraform_role: TerraformProv
+proxmox_terraform_privileges:
+  - Datastore.AllocateSpace
+  - Datastore.AllocateTemplate
+  - Datastore.Audit
+  - SDN.Use
+  - Sys.Audit
+  - VM.Allocate
+  - VM.Audit
+  - VM.Config.CDROM
+  - VM.Config.CPU
+  - VM.Config.Disk
+  - VM.Config.HWType
+  - VM.Config.Memory
+  - VM.Config.Network
+  - VM.Config.Options
+  - VM.PowerMgmt
+
+proxmox_terraform_user: terraform@pve
+proxmox_terraform_token_name: provider
+
+# Delete and recreate the API token and overwrite its line in the .env file. The
+# secret cannot be read back from Proxmox, so this is the only way to replace it.
+proxmox_terraform_rotate_token: false
+
+# Git-ignored file on the controller that receives PROXMOX_VE_API_TOKEN.
+proxmox_terraform_env_file: "{{ playbook_dir }}/../.env"
+
+# LXC template handed to Terraform. An existing template matching the prefix is
+# always reused, so Terraform never sees a template change.
+proxmox_terraform_template_storage: local
+proxmox_terraform_template_prefix: debian-13-standard_
+proxmox_terraform_tfvars_file: "{{ playbook_dir }}/../terraform/envs/homelab/lxc_template.auto.tfvars.json"
