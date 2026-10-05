@@ -1,0 +1,74 @@
+---
+- name: Check whether Caddy is installed
+  ansible.builtin.stat:
+    path: "{{ caddy_binary }}"
+  register: caddy_stat
+
+- name: Install repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian # required by deb822_repository
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Add Caddy apt repository
+  ansible.builtin.deb822_repository:
+    name: caddy
+    types: deb
+    uris: "https://dl.cloudsmith.io/public/caddy/stable/deb/debian"
+    suites: any-version
+    components: main
+    signed_by: "https://dl.cloudsmith.io/public/caddy/stable/gpg.key"
+    state: present
+  register: caddy_repo
+
+- name: Install Caddy
+  ansible.builtin.apt:
+    name: caddy
+    state: present
+    update_cache: "{{ caddy_repo is changed }}"
+  # In check mode the repository above is not really added, so the package is unknown.
+  when: not (ansible_check_mode and caddy_repo is changed)
+
+# Neither /etc/caddy nor the service exist before the install, so check mode
+# stops here on a host without Caddy.
+- name: Configure and run Caddy
+  when: not ansible_check_mode or caddy_stat.stat.exists
+  block:
+    - name: Render the Caddyfile
+      ansible.builtin.template:
+        src: Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        owner: root
+        group: caddy
+        mode: "0640"
+        validate: caddy validate --adapter caddyfile --config %s
+      notify: Reload caddy
+
+    - name: Enable and start Caddy
+      ansible.builtin.service:
+        name: caddy
+        state: started
+        enabled: true
+
+    - name: Apply the Caddyfile before reading the root certificate
+      ansible.builtin.meta: flush_handlers
+
+# The internal CA is created on the first start with at least one site.
+- name: Export the internal CA root certificate
+  when:
+    - not ansible_check_mode
+    - caddy_sites | length > 0
+  block:
+    - name: Wait for the root certificate
+      ansible.builtin.wait_for:
+        path: "{{ caddy_root_cert_path }}"
+        timeout: 60
+
+    - name: Fetch the root certificate to the controller
+      ansible.builtin.fetch:
+        src: "{{ caddy_root_cert_path }}"
+        dest: "{{ caddy_root_cert_dest }}"
+        flat: true

@@ -1,0 +1,17 @@
+---
+# Sites to publish, as a list of {name, upstream, upstream_tls_insecure}.
+# name is the host name clients use (served over HTTPS with Caddy's internal CA),
+# upstream is the backend URL including scheme and port, and
+# upstream_tls_insecure skips certificate verification for an HTTPS backend with
+# a self-signed certificate (optional, default false).
+caddy_sites: []
+
+# Root certificate of Caddy's internal CA, as created on the host.
+caddy_root_cert_path: /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt
+
+# Where the root certificate is copied to on the controller, to be installed as
+# a trusted root on each device. Public certificate, but generated per
+# installation, so it is git-ignored.
+caddy_root_cert_dest: "{{ playbook_dir }}/../caddy-root.crt"
+
+caddy_binary: /usr/bin/caddy

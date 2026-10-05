@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+{% for site in caddy_sites %}
+
+{{ site.name }} {
+	tls internal
+{% if site.upstream_tls_insecure | default(false) | bool %}
+	reverse_proxy {{ site.upstream }} {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+{% else %}
+	reverse_proxy {{ site.upstream }}
+{% endif %}
+}
+{% endfor %}
