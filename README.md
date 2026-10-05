@@ -16,8 +16,12 @@ you can change.
 | Pi-hole | LXC | `192.168.1.60` | ad filtering and DNS for the LAN |
 | Home Assistant OS | VM | `192.168.1.62` | home automation |
 | Caddy | LXC | `192.168.1.64` | HTTPS reverse proxy, so services are reached by name with no ports |
+| Gatus | LXC | `192.168.1.61` | status page and service checks, with alerts through Telegram |
 
-Planned: Uptime Kuma, backups, and a Jellyfin media library.
+The host also sends its own alerts to Telegram: Proxmox notifications and a warning
+before the guest storage fills up.
+
+Planned: backups and a Jellyfin media library.
 
 ## How it is organised
 
@@ -71,7 +75,8 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    cp .env.example .env && chmod 600 .env
    ```
 
-   Put a Tailscale auth key and a password for the Pi-hole web UI in `.env`.
+   Put a Tailscale auth key, a password for the Pi-hole web UI and a Telegram bot
+   token in `.env`.
 
 4. **Configure the host.** This joins it to your tailnet as a subnet router, creates
    the API token that OpenTofu uses, and downloads the container template and the

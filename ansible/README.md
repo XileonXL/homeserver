@@ -11,8 +11,10 @@ appliance and is not managed here.
 | `proxmox_opentofu` | `proxmox` | Creates the API token for OpenTofu and downloads the Debian LXC template |
 | `haos_image` | `proxmox` | Downloads the Home Assistant OS disk image for OpenTofu to import |
 | `haos_network` | `proxmox` | Sets the static address of Home Assistant OS and the proxies it trusts, through the guest agent |
+| `alerts` | `proxmox` | Sends Proxmox notifications and a thin pool warning to Telegram; optional heartbeat to an external watchdog |
 | `pihole` | `pihole` | Installs and configures Pi-hole v6 |
 | `caddy` | `caddy` | Reverse proxy: every service as `https://<name>` with Caddy's internal CA |
+| `gatus` | `gatus` | Builds and runs the Gatus status page; alerts through Telegram |
 
 Hosts and addresses are in `inventory/hosts.yml`; per-group settings in
 `inventory/group_vars/`.
@@ -40,6 +42,9 @@ set -a; source ../.env; set +a
 | `PROXMOX_VE_API_TOKEN` | the `proxmox_opentofu` role | by OpenTofu |
 | `TAILSCALE_AUTHKEY` | you | only when a node joins the tailnet |
 | `PIHOLE_WEB_PASSWORD` | you | on the first Pi-hole install, or to change the password |
+| `TELEGRAM_BOT_TOKEN` | you | by the `alerts` role |
+| `TELEGRAM_CHAT_ID` | the `alerts` role | optional; found from the bot's latest message when empty |
+| `HEARTBEAT_URL` | you | optional; enables the heartbeat to an external watchdog |
 
 ## Run
 
@@ -56,6 +61,9 @@ A container must exist before its play can run, so the order for a new guest is
 3. `ansible-playbook site.yml --limit pihole`
 4. `ansible-playbook site.yml --limit caddy`
 
+To replace the Telegram bot token, update `.env` and run the `alerts` role with
+`-e alerts_rotate_secret=true`.
+
 To replace the OpenTofu API token:
 
 ```bash
@@ -70,3 +78,5 @@ ansible-playbook site.yml --limit proxmox -e proxmox_opentofu_rotate_token=true
   filter too; see the [network plan](../docs/02-network-plan.md#dns).
 - Every device: install `caddy-root.crt` (written to the repository root by the `caddy`
   play) as a trusted root certificate.
+- Telegram: create a bot with @BotFather and send it one message before the first
+  run of the `alerts` role.
