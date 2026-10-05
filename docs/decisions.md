@@ -16,18 +16,18 @@ An LXC container shares the host kernel, starts in seconds and runs Pi-hole in
 512 MB. A VM is for anything that needs its own kernel or ships as an appliance image,
 such as Home Assistant OS, and for anything that runs Docker.
 
-## The `bpg/proxmox` Terraform provider
+## The `bpg/proxmox` OpenTofu provider
 
 It is actively maintained and covers containers, VMs and file downloads. The older
 `Telmate/proxmox` provider is not.
 
-## Terraform creates, Ansible configures
+## OpenTofu creates, Ansible configures
 
-Terraform creates a guest and stops. Everything inside it is Ansible's, so that
+OpenTofu creates a guest and stops. Everything inside it is Ansible's, so that
 changing a setting never requires replacing the guest. Nothing is done by hand on a
 machine.
 
-## Local Terraform state
+## Local OpenTofu state
 
 One operator and no CI. Remote state would make rebuilding the house depend on a
 cloud account. The state is never committed, because it can hold secrets in plaintext.
@@ -35,7 +35,7 @@ cloud account. The state is never committed, because it can hold secrets in plai
 ## Secrets in a git-ignored `.env`
 
 The roles and the provider read credentials from the environment, so they never reach
-a tracked file or the Terraform state. Where the `.env` values come from is up to
+a tracked file or the OpenTofu state. Where the `.env` values come from is up to
 you; a password manager works.
 
 ## No unfiltered secondary DNS

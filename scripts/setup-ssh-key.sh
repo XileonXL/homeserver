@@ -13,7 +13,7 @@ usage() {
   cat <<EOF
 Usage: ${SCRIPT_NAME} <host> [user]
 
-Creates the SSH key that Ansible and Terraform use (${KEY_PATH}),
+Creates the SSH key that Ansible and OpenTofu use (${KEY_PATH}),
 if it does not exist yet, and authorises it on <host>.
 
 Run it on the workstation, once per machine to be managed. It asks for the

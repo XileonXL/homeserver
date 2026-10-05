@@ -54,7 +54,7 @@ have no network.
 | Gateway | the router |
 | DNS server | the router |
 
-The part of the hostname before the first dot becomes the node name, which Terraform
+The part of the hostname before the first dot becomes the node name, which OpenTofu
 needs (`node_name`, default `pve`). It is awkward to change later.
 
 `.local` is reserved for mDNS, which Home Assistant relies on for discovery.

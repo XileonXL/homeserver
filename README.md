@@ -14,8 +14,10 @@ you can change.
 | Proxmox VE 9 | host | `192.168.1.50` | hypervisor |
 | Tailscale | on the host | | reach the whole LAN from anywhere |
 | Pi-hole | LXC | `192.168.1.60` | ad filtering and DNS for the LAN |
+| Home Assistant OS | VM | `192.168.1.62` | home automation |
+| Caddy | LXC | `192.168.1.64` | HTTPS reverse proxy, so services are reached by name with no ports |
 
-Planned: Home Assistant OS, Uptime Kuma, backups, and a Jellyfin media library.
+Planned: Uptime Kuma, backups, and a Jellyfin media library.
 
 ## How it is organised
 
@@ -23,7 +25,7 @@ Planned: Home Assistant OS, Uptime Kuma, backups, and a Jellyfin media library.
 bootstrap/   one script, run once on the host right after installing Proxmox
 scripts/     helpers that run on the workstation
 ansible/     configures the host and everything inside the containers
-terraform/   creates the containers and VMs
+opentofu/    creates the containers and VMs
 docs/        install guide, network plan and the reasoning behind each decision
 ```
 
@@ -32,7 +34,7 @@ Nothing is configured by hand on the machines.
 ## Requirements
 
 - A machine for Proxmox VE with VT-x and wired Ethernet. Wi-Fi cannot be bridged.
-- A workstation with Ansible, Terraform and an SSH client.
+- A workstation with Ansible, OpenTofu and an SSH client.
 - A free [Tailscale](https://tailscale.com) account.
 
 ## Adapt it to your network
@@ -43,8 +45,11 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
 |---|---|
 | Host address, SSH key | `ansible/inventory/hosts.yml` |
 | LAN range advertised over Tailscale | `ansible/inventory/group_vars/proxmox.yml` |
-| Proxmox endpoint, node name, gateway, container addresses and sizes | `terraform/envs/homelab/variables.tf` |
+| Proxmox endpoint, node name, gateway, container addresses and sizes | `opentofu/envs/homeserver/variables.tf` |
 | Upstream DNS servers for Pi-hole | `ansible/roles/pihole/defaults/main.yml` |
+| Local DNS names served by Pi-hole | `ansible/inventory/group_vars/pihole.yml` |
+| Sites published by the reverse proxy | `ansible/inventory/group_vars/caddy.yml` |
+| Node domain, Home Assistant address | `ansible/inventory/group_vars/proxmox.yml` |
 
 ## Getting started
 
@@ -68,8 +73,9 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
 
    Put a Tailscale auth key and a password for the Pi-hole web UI in `.env`.
 
-4. **Configure the host.** This joins it to your tailnet as a subnet router and
-   creates the API token that Terraform uses.
+4. **Configure the host.** This joins it to your tailnet as a subnet router, creates
+   the API token that OpenTofu uses, and downloads the container template and the
+   Home Assistant OS image.
 
    ```bash
    set -a; source .env; set +a
@@ -80,14 +86,14 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    In the Tailscale admin console, approve the advertised route and disable key
    expiry for the host.
 
-5. **Create the Pi-hole container.**
+5. **Create the guests:** the Pi-hole container and the Home Assistant VM.
 
    ```bash
    set -a; source .env; set +a
-   cd terraform/envs/homelab
-   terraform init
-   terraform plan
-   terraform apply
+   cd opentofu/envs/homeserver
+   tofu init
+   tofu plan
+   tofu apply
    ```
 
 6. **Install Pi-hole.**
@@ -101,7 +107,11 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    handed out by DHCP. Never add an ordinary public resolver as secondary: see
    [docs/02](docs/02-network-plan.md#dns).
 
-More detail in [ansible/](ansible/README.md) and [terraform/](terraform/README.md).
+8. **Set up Home Assistant.** Open `http://192.168.1.62:8123` and create your user.
+   To reach it through the proxy, declare the proxy as trusted in its
+   `configuration.yaml`; see [ansible/](ansible/README.md).
+
+More detail in [ansible/](ansible/README.md) and [opentofu/](opentofu/README.md).
 
 ## Documentation
 

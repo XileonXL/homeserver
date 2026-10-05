@@ -34,7 +34,7 @@ usage() {
 Usage: ${SCRIPT_NAME} [OPTIONS]
 
 Run once, as root, on a freshly installed Proxmox VE 9 node. Idempotent and
-safe to re-run. Prepares the host for Terraform/Ansible-driven provisioning.
+safe to re-run. Prepares the host for OpenTofu/Ansible-driven provisioning.
 
 Options:
   -h, --help      Show this help and exit
@@ -387,7 +387,7 @@ print_summary() {
 
   printf '\nNext steps:\n'
   printf '  1. Configure this host with Ansible (see ansible/README.md).\n'
-  printf '  2. Provision guests with Terraform (bpg/proxmox provider) against this node.\n'
+  printf '  2. Provision guests with OpenTofu (bpg/proxmox provider) against this node.\n'
   printf '\n'
 }
 

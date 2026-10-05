@@ -22,8 +22,8 @@ and not a general-purpose NAS.
 - **Secrets** come from the environment, loaded from the git-ignored `.env` at the
   repository root. Never write a secret to a tracked file, and use `no_log` on any
   task that carries one. `.env.example` lists the variables.
-- **Terraform**: `bpg/proxmox` only. Local state, never committed. Never
-  run `terraform apply`; plan, validate and lint only.
+- **OpenTofu**: `bpg/proxmox` only. Local state, never committed. Never
+  run `tofu apply`; plan, validate and lint only.
 - **Ansible**: fully qualified module names, accurate `changed` reporting, and check
   mode must not fail on a host where the software is not installed yet.
 - **Decisions** are recorded in `docs/decisions.md`. Update it when one changes.
@@ -35,7 +35,7 @@ and not a general-purpose NAS.
 bootstrap/   host post-install script
 scripts/     workstation-side helpers
 ansible/     configuration of the host and the containers
-terraform/   creation of the guests
+opentofu/    creation of the guests
 docs/        install guide, network plan and decisions
 ```
 
@@ -48,7 +48,7 @@ docs/        install guide, network plan and decisions
   secondaries opportunistically, so filtering leaks. A secondary must filter too.
 - A full LVM thin pool corrupts guests. Anything that grows without bound, such as
   media, goes on a separate disk.
-- Changing a container's template or injected SSH key forces Terraform to replace it;
+- Changing a container's template or injected SSH key forces OpenTofu to replace it;
   both are in `ignore_changes` on purpose.
 
 ## Verification
@@ -56,5 +56,5 @@ docs/        install guide, network plan and decisions
 - Shell: `shellcheck` and `bash -n`.
 - Ansible: `ansible-playbook site.yml --syntax-check` and `ansible-lint`, from
   `ansible/`.
-- Terraform: `terraform fmt -check`, `terraform validate` and `tflint`, from
-  `terraform/envs/homelab/`.
+- OpenTofu: `tofu fmt -check`, `tofu validate` and `tflint`, from
+  `opentofu/envs/homeserver/`.
