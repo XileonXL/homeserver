@@ -1,10 +1,18 @@
 ---
-# Sites to publish, as a list of {name, upstream, upstream_tls_insecure}.
+# Sites to publish, as a list of {name, upstream, upstream_tls_insecure, title, icon}.
 # name is the host name clients use (served over HTTPS with Caddy's internal CA),
 # upstream is the backend URL including scheme and port, and
 # upstream_tls_insecure skips certificate verification for an HTTPS backend with
-# a self-signed certificate (optional, default false).
+# a self-signed certificate (optional, default false). title and icon (a Font
+# Awesome class) are optional and only used by the dashboard.
 caddy_sites: []
+
+# Host name of a start page with one link per site, served by Caddy itself as
+# static files (Homer). Empty means no dashboard.
+caddy_dashboard_name: ""
+caddy_dashboard_title: Home server
+caddy_dashboard_root: /var/www/homer
+caddy_dashboard_archive_url: https://github.com/bastienwirtz/homer/releases/latest/download/homer.zip
 
 # Root certificate of Caddy's internal CA, as created on the host.
 caddy_root_cert_path: /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt

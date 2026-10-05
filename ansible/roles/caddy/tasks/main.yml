@@ -32,6 +32,35 @@
   # In check mode the repository above is not really added, so the package is unknown.
   when: not (ansible_check_mode and caddy_repo is changed)
 
+- name: Install the dashboard
+  when:
+    - caddy_dashboard_name | length > 0
+    - not ansible_check_mode
+  block:
+    - name: Install unzip
+      ansible.builtin.apt:
+        name: unzip
+        state: present
+
+    - name: Create the dashboard directory
+      ansible.builtin.file:
+        path: "{{ caddy_dashboard_root }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download and unpack Homer
+      ansible.builtin.unarchive:
+        src: "{{ caddy_dashboard_archive_url }}"
+        dest: "{{ caddy_dashboard_root }}"
+        remote_src: true
+        creates: "{{ caddy_dashboard_root }}/index.html"
+
+    - name: Render the dashboard configuration
+      ansible.builtin.template:
+        src: homer-config.yml.j2
+        dest: "{{ caddy_dashboard_root }}/assets/config.yml"
+        mode: "0644"
+
 # Neither /etc/caddy nor the service exist before the install, so check mode
 # stops here on a host without Caddy.
 - name: Configure and run Caddy

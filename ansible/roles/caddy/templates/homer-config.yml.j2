@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+title: {{ caddy_dashboard_title | to_json }}
+subtitle: ""
+header: true
+footer: false
+connectivityCheck: false
+
+services:
+  - name: "Services"
+    items:
+{% for site in caddy_sites %}
+      - name: {{ site.title | default(site.name) | to_json }}
+        subtitle: {{ site.name | to_json }}
+{% if site.icon is defined %}
+        icon: {{ site.icon | to_json }}
+{% endif %}
+        url: {{ ('https://' ~ site.name) | to_json }}
+{% endfor %}

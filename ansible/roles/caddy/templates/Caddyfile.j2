@@ -1,4 +1,12 @@
 # {{ ansible_managed }}
+{% if caddy_dashboard_name | length > 0 %}
+
+{{ caddy_dashboard_name }} {
+	tls internal
+	root * {{ caddy_dashboard_root }}
+	file_server
+}
+{% endif %}
 {% for site in caddy_sites %}
 
 {{ site.name }} {
