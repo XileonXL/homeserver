@@ -52,5 +52,34 @@ variable "containers" {
       swap   = 512
       disk   = 8
     }
+    caddy = {
+      vm_id  = 164
+      ip     = "192.168.1.64"
+      cores  = 1
+      memory = 256
+      swap   = 256
+      disk   = 4
+    }
+  }
+}
+
+variable "haos_image_file_id" {
+  description = "Proxmox file ID of the Home Assistant OS qcow2 image, for example local:import/haos_ova-<ver>.qcow2 (written by Ansible to haos_image.auto.tfvars.json)"
+  type        = string
+}
+
+variable "homeassistant" {
+  description = "Home Assistant OS virtual machine. memory is in MB, disk in GB"
+  type = object({
+    vm_id  = number
+    cores  = number
+    memory = number
+    disk   = number
+  })
+  default = {
+    vm_id  = 162
+    cores  = 4
+    memory = 4096
+    disk   = 64
   }
 }

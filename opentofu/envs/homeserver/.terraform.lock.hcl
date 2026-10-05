@@ -1,14 +1,23 @@
-# This file is maintained automatically by "terraform init".
+# This file is maintained automatically by "tofu init".
 # Manual edits may be lost in future updates.
 
-provider "registry.terraform.io/bpg/proxmox" {
+provider "registry.opentofu.org/bpg/proxmox" {
   version     = "0.115.0"
   constraints = "~> 0.115"
   hashes = [
+    "h1:1gLKXKxayg2R2V0kLIdvWf6CxfPJnvLvDTZPxi2h/e0=",
     "h1:96IF1/xAmQ7EFfmXjdeJpTzFB6Fi3BVvxJ6S33CgBfs=",
     "h1:Bojb4vWX7rdlzNTwvgQ/TPEQE+Fl5s+I8wyr2af5kwY=",
     "h1:EoMqLdzohBwUQLm8k0c1DktI62fLfx4PBkqy7gmTGSY=",
+    "h1:Eyrzjm7IDfEjIUnm5XPcfQWXtdtrCEUt8XstcdOwDVk=",
+    "h1:M90dDcmfNzLPcpJwrNtfg5z3UXw+WJmwEFrg1AaJXx8=",
+    "h1:OFOx/ofOae43qy44X+cRNpjIt7po7h3MJaTQb1dQb/A=",
+    "h1:X4q0YWYqQH2hMRQOzsms46c02a29uzBd3qqc8JMcmAk=",
+    "h1:gFRtMVJryIz+ar/Vn5MdIgYspAvpwn7HCEC39KRCy7s=",
+    "h1:pa1r7mgVP+lh400uGBLUept1ZFovP404UN1+IHs3/2s=",
+    "h1:t2hBj5PbCyVj1pgJh4it3dQL/s3ixy2SJcVNFsNQmPM=",
     "h1:uoqp5x9NhzFU8E5d5hnLFdjx/fXpiTRQn6mY+k81KVg=",
+    "h1:xtKiV5Te8w2klNLqyBEuDmZA97IeawGLLJBVOFkLPVo=",
     "zh:0e1e76993470a5ce715a6d7fb3446b561011eb50881b2f0b53d5871aebb95bf8",
     "zh:225c6fad7a6f4c8059fc7c8f5bfadac25400986c905a9977d87ae56998a0e0e1",
     "zh:36c1c6bdcb9c74456ecab30beac94d7984b50deedd236cda8708e5aac924469e",

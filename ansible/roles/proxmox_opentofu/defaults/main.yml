@@ -1,0 +1,38 @@
+---
+# Custom role for the bpg/proxmox OpenTofu provider. Proxmox VE 9 privilege names
+# (VM.Monitor no longer exists). If the role on the host differs, it is converged.
+proxmox_opentofu_role: OpenTofuProv
+proxmox_opentofu_privileges:
+  - Datastore.AllocateSpace
+  - Datastore.AllocateTemplate
+  - Datastore.Audit
+  - SDN.Use
+  - Sys.Audit
+  - VM.Allocate
+  - VM.Audit
+  - VM.Config.CDROM
+  - VM.Config.CPU
+  - VM.Config.Disk
+  - VM.Config.HWType
+  - VM.Config.Memory
+  - VM.Config.Network
+  - VM.Config.Options
+  - VM.PowerMgmt
+
+proxmox_opentofu_user: opentofu@pve
+proxmox_opentofu_token_name: provider
+
+# Delete and recreate the API token and overwrite its line in the .env file. The
+# secret cannot be read back from Proxmox, so this is the only way to replace it.
+proxmox_opentofu_rotate_token: false
+
+# Git-ignored file on the controller that receives PROXMOX_VE_API_TOKEN.
+proxmox_opentofu_env_file: "{{ playbook_dir }}/../.env"
+
+# LXC template handed to OpenTofu. An existing template matching the prefix is
+# always reused, so OpenTofu never sees a template change.
+proxmox_opentofu_template_storage: local
+proxmox_opentofu_template_prefix: debian-13-standard_
+# The catalogue also lists templates for other architectures.
+proxmox_opentofu_template_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
+proxmox_opentofu_tfvars_file: "{{ playbook_dir }}/../opentofu/envs/homeserver/lxc_template.auto.tfvars.json"

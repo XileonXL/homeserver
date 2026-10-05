@@ -4,85 +4,85 @@
 
 - name: Read Proxmox roles
   ansible.builtin.command: pveum role list --output-format json
-  register: proxmox_terraform_roles
+  register: proxmox_opentofu_roles
   changed_when: false
   check_mode: false
 
 - name: Read Proxmox users
   ansible.builtin.command: pveum user list --output-format json
-  register: proxmox_terraform_users
+  register: proxmox_opentofu_users
   changed_when: false
   check_mode: false
 
 - name: Read Proxmox ACLs
   ansible.builtin.command: pveum acl list --output-format json
-  register: proxmox_terraform_acls
+  register: proxmox_opentofu_acls
   changed_when: false
   check_mode: false
 
 - name: Work out which identity objects exist
   ansible.builtin.set_fact:
-    proxmox_terraform_role_current: >-
-      {{ proxmox_terraform_roles.stdout | from_json
-         | selectattr('roleid', 'equalto', proxmox_terraform_role) | list }}
-    proxmox_terraform_user_exists: >-
-      {{ (proxmox_terraform_users.stdout | from_json
-          | selectattr('userid', 'equalto', proxmox_terraform_user) | list) | length > 0 }}
-    proxmox_terraform_acl_exists: >-
-      {{ (proxmox_terraform_acls.stdout | from_json
+    proxmox_opentofu_role_current: >-
+      {{ proxmox_opentofu_roles.stdout | from_json
+         | selectattr('roleid', 'equalto', proxmox_opentofu_role) | list }}
+    proxmox_opentofu_user_exists: >-
+      {{ (proxmox_opentofu_users.stdout | from_json
+          | selectattr('userid', 'equalto', proxmox_opentofu_user) | list) | length > 0 }}
+    proxmox_opentofu_acl_exists: >-
+      {{ (proxmox_opentofu_acls.stdout | from_json
           | selectattr('path', 'equalto', '/')
           | selectattr('type', 'equalto', 'user')
-          | selectattr('ugid', 'equalto', proxmox_terraform_user)
-          | selectattr('roleid', 'equalto', proxmox_terraform_role)
+          | selectattr('ugid', 'equalto', proxmox_opentofu_user)
+          | selectattr('roleid', 'equalto', proxmox_opentofu_role)
           | selectattr('propagate', 'in', [1, '1', true]) | list) | length > 0 }}
 
 # pveum reports privileges as a comma separated string.
 - name: Compare role privileges with the desired set
   ansible.builtin.set_fact:
-    proxmox_terraform_role_exists: "{{ proxmox_terraform_role_current | length > 0 }}"
-    proxmox_terraform_role_in_sync: >-
-      {{ proxmox_terraform_role_current | length > 0
-         and ((proxmox_terraform_role_current[0].privs | default('', true)).split(',')
+    proxmox_opentofu_role_exists: "{{ proxmox_opentofu_role_current | length > 0 }}"
+    proxmox_opentofu_role_in_sync: >-
+      {{ proxmox_opentofu_role_current | length > 0
+         and ((proxmox_opentofu_role_current[0].privs | default('', true)).split(',')
               | reject('equalto', '') | sort)
-             == (proxmox_terraform_privileges | sort) }}
+             == (proxmox_opentofu_privileges | sort) }}
 
-- name: Create the Terraform role
+- name: Create the OpenTofu role
   ansible.builtin.command:
     argv:
       - pveum
       - role
       - add
-      - "{{ proxmox_terraform_role }}"
+      - "{{ proxmox_opentofu_role }}"
       - --privs
-      - "{{ proxmox_terraform_privileges | join(',') }}"
+      - "{{ proxmox_opentofu_privileges | join(',') }}"
   changed_when: true
-  when: not proxmox_terraform_role_exists | bool
+  when: not proxmox_opentofu_role_exists | bool
 
-- name: Converge the Terraform role privileges
+- name: Converge the OpenTofu role privileges
   ansible.builtin.command:
     argv:
       - pveum
       - role
       - modify
-      - "{{ proxmox_terraform_role }}"
+      - "{{ proxmox_opentofu_role }}"
       - --privs
-      - "{{ proxmox_terraform_privileges | join(',') }}"
+      - "{{ proxmox_opentofu_privileges | join(',') }}"
   changed_when: true
   when:
-    - proxmox_terraform_role_exists | bool
-    - not proxmox_terraform_role_in_sync | bool
+    - proxmox_opentofu_role_exists | bool
+    - not proxmox_opentofu_role_in_sync | bool
 
-- name: Create the Terraform user
+- name: Create the OpenTofu user
   ansible.builtin.command:
     argv:
       - pveum
       - user
       - add
-      - "{{ proxmox_terraform_user }}"
+      - "{{ proxmox_opentofu_user }}"
       - --comment
-      - Terraform (bpg/proxmox provider)
+      - OpenTofu (bpg/proxmox provider)
   changed_when: true
-  when: not proxmox_terraform_user_exists | bool
+  when: not proxmox_opentofu_user_exists | bool
 
 - name: Grant the role to the user on / with propagation
   ansible.builtin.command:
@@ -92,45 +92,45 @@
       - modify
       - /
       - --users
-      - "{{ proxmox_terraform_user }}"
+      - "{{ proxmox_opentofu_user }}"
       - --roles
-      - "{{ proxmox_terraform_role }}"
+      - "{{ proxmox_opentofu_role }}"
       - --propagate
       - "1"
   changed_when: true
-  when: not proxmox_terraform_acl_exists | bool
+  when: not proxmox_opentofu_acl_exists | bool
 
 # The user cannot be listed for tokens before it exists (check mode, first run).
 - name: Read the user's API tokens
-  ansible.builtin.command: "pveum user token list {{ proxmox_terraform_user }} --output-format json"
-  register: proxmox_terraform_tokens
+  ansible.builtin.command: "pveum user token list {{ proxmox_opentofu_user }} --output-format json"
+  register: proxmox_opentofu_tokens
   changed_when: false
   check_mode: false
-  when: proxmox_terraform_user_exists | bool
+  when: proxmox_opentofu_user_exists | bool
 
 - name: Work out the token state
   ansible.builtin.set_fact:
-    proxmox_terraform_token_current: >-
-      {{ (proxmox_terraform_tokens.stdout | from_json
-          | selectattr('tokenid', 'equalto', proxmox_terraform_token_name) | list)
-         if proxmox_terraform_user_exists | bool else [] }}
+    proxmox_opentofu_token_current: >-
+      {{ (proxmox_opentofu_tokens.stdout | from_json
+          | selectattr('tokenid', 'equalto', proxmox_opentofu_token_name) | list)
+         if proxmox_opentofu_user_exists | bool else [] }}
 
 - name: Assert the existing token has privilege separation disabled
   ansible.builtin.assert:
-    that: (proxmox_terraform_token_current[0].privsep | default(0) | int) == 0
+    that: (proxmox_opentofu_token_current[0].privsep | default(0) | int) == 0
     fail_msg: >-
-      Token {{ proxmox_terraform_user }}!{{ proxmox_terraform_token_name }} has privilege
+      Token {{ proxmox_opentofu_user }}!{{ proxmox_opentofu_token_name }} has privilege
       separation enabled and would have no permissions. Run with
-      -e proxmox_terraform_rotate_token=true to recreate it.
+      -e proxmox_opentofu_rotate_token=true to recreate it.
     quiet: true
   when:
-    - proxmox_terraform_token_current | length > 0
-    - not proxmox_terraform_rotate_token | bool
+    - proxmox_opentofu_token_current | length > 0
+    - not proxmox_opentofu_rotate_token | bool
 
 - name: Create the API token and store it in the controller's .env file
   when: >-
-    proxmox_terraform_token_current | length == 0
-    or proxmox_terraform_rotate_token | bool
+    proxmox_opentofu_token_current | length == 0
+    or proxmox_opentofu_rotate_token | bool
   block:
     - name: Delete the existing API token (rotation)
       ansible.builtin.command:
@@ -139,10 +139,10 @@
           - user
           - token
           - remove
-          - "{{ proxmox_terraform_user }}"
-          - "{{ proxmox_terraform_token_name }}"
+          - "{{ proxmox_opentofu_user }}"
+          - "{{ proxmox_opentofu_token_name }}"
       changed_when: true
-      when: proxmox_terraform_token_current | length > 0
+      when: proxmox_opentofu_token_current | length > 0
 
     # The secret is printed only once, in this command's output.
     - name: Create the API token
@@ -152,13 +152,13 @@
           - user
           - token
           - add
-          - "{{ proxmox_terraform_user }}"
-          - "{{ proxmox_terraform_token_name }}"
+          - "{{ proxmox_opentofu_user }}"
+          - "{{ proxmox_opentofu_token_name }}"
           - --privsep
           - "0"
           - --output-format
           - json
-      register: proxmox_terraform_token_new
+      register: proxmox_opentofu_token_new
       changed_when: true
       no_log: true
 
@@ -166,11 +166,11 @@
     # must not interpret.
     - name: Store the token in the controller's .env file
       ansible.builtin.lineinfile:
-        path: "{{ proxmox_terraform_env_file | realpath }}"
+        path: "{{ proxmox_opentofu_env_file | realpath }}"
         regexp: '^PROXMOX_VE_API_TOKEN='
         line: >-
-          PROXMOX_VE_API_TOKEN='{{ proxmox_terraform_user }}!{{ proxmox_terraform_token_name }}={{
-          (proxmox_terraform_token_new.stdout | from_json).value }}'
+          PROXMOX_VE_API_TOKEN='{{ proxmox_opentofu_user }}!{{ proxmox_opentofu_token_name }}={{
+          (proxmox_opentofu_token_new.stdout | from_json).value }}'
         create: true
         mode: "0600"
       delegate_to: localhost
@@ -189,8 +189,8 @@
           - user
           - token
           - remove
-          - "{{ proxmox_terraform_user }}"
-          - "{{ proxmox_terraform_token_name }}"
+          - "{{ proxmox_opentofu_user }}"
+          - "{{ proxmox_opentofu_token_name }}"
       changed_when: true
       failed_when: false
 
@@ -201,18 +201,18 @@
           removed; run again.
 
 - name: List LXC templates already on the storage
-  ansible.builtin.command: "pveam list {{ proxmox_terraform_template_storage }}"
-  register: proxmox_terraform_pveam_list
+  ansible.builtin.command: "pveam list {{ proxmox_opentofu_template_storage }}"
+  register: proxmox_opentofu_pveam_list
   changed_when: false
   check_mode: false
 
 - name: Find an existing template
   ansible.builtin.set_fact:
-    proxmox_terraform_template_existing: >-
-      {{ proxmox_terraform_pveam_list.stdout
-         | regex_findall('(?m)^' ~ proxmox_terraform_template_storage ~ ':vztmpl/('
-                         ~ proxmox_terraform_template_prefix ~ '\S*_'
-                         ~ proxmox_terraform_template_arch ~ '\.tar\.\S+)')
+    proxmox_opentofu_template_existing: >-
+      {{ proxmox_opentofu_pveam_list.stdout
+         | regex_findall('(?m)^' ~ proxmox_opentofu_template_storage ~ ':vztmpl/('
+                         ~ proxmox_opentofu_template_prefix ~ '\S*_'
+                         ~ proxmox_opentofu_template_arch ~ '\.tar\.\S+)')
          | sort | last | default('', true) }}
 
 # In check mode the catalogue is not refreshed, so it may be empty or missing.
@@ -220,7 +220,7 @@
 # on a fact that the block itself sets.
 - name: Download a template when none exists
   when:
-    - proxmox_terraform_template_existing == ''
+    - proxmox_opentofu_template_existing == ''
     - not ansible_check_mode
   block:
     - name: Refresh the template catalogue
@@ -229,23 +229,23 @@
 
     - name: List available system templates
       ansible.builtin.command: pveam available --section system
-      register: proxmox_terraform_pveam_available
+      register: proxmox_opentofu_pveam_available
       changed_when: false
       check_mode: false
 
     - name: Pick the newest matching template
       ansible.builtin.set_fact:
-        proxmox_terraform_template_name: >-
-          {{ proxmox_terraform_pveam_available.stdout
-             | regex_findall('(?m)\s(' ~ proxmox_terraform_template_prefix ~ '\S*_'
-                             ~ proxmox_terraform_template_arch ~ '\.tar\.\S+)$')
+        proxmox_opentofu_template_name: >-
+          {{ proxmox_opentofu_pveam_available.stdout
+             | regex_findall('(?m)\s(' ~ proxmox_opentofu_template_prefix ~ '\S*_'
+                             ~ proxmox_opentofu_template_arch ~ '\.tar\.\S+)$')
              | sort | last | default('', true) }}
 
     - name: Assert a template was found
       ansible.builtin.assert:
-        that: proxmox_terraform_template_name != ''
+        that: proxmox_opentofu_template_name != ''
         fail_msg: >-
-          No {{ proxmox_terraform_template_prefix }}*_{{ proxmox_terraform_template_arch }}
+          No {{ proxmox_opentofu_template_prefix }}*_{{ proxmox_opentofu_template_arch }}
           template in 'pveam available --section system'.
         quiet: true
 
@@ -254,21 +254,21 @@
         argv:
           - pveam
           - download
-          - "{{ proxmox_terraform_template_storage }}"
-          - "{{ proxmox_terraform_template_name }}"
+          - "{{ proxmox_opentofu_template_storage }}"
+          - "{{ proxmox_opentofu_template_name }}"
       changed_when: true
 
 - name: Reuse the existing template
   ansible.builtin.set_fact:
-    proxmox_terraform_template_name: "{{ proxmox_terraform_template_existing }}"
-  when: proxmox_terraform_template_existing != ''
+    proxmox_opentofu_template_name: "{{ proxmox_opentofu_template_existing }}"
+  when: proxmox_opentofu_template_existing != ''
 
-- name: Hand the template volume id to Terraform
+- name: Hand the template volume id to OpenTofu
   ansible.builtin.copy:
-    dest: "{{ proxmox_terraform_tfvars_file | realpath }}"
+    dest: "{{ proxmox_opentofu_tfvars_file | realpath }}"
     content: |
-      {{ {'lxc_template_file_id': proxmox_terraform_template_storage ~ ':vztmpl/' ~ proxmox_terraform_template_name} | to_json }}
+      {{ {'lxc_template_file_id': proxmox_opentofu_template_storage ~ ':vztmpl/' ~ proxmox_opentofu_template_name} | to_json }}
     mode: "0644"
   delegate_to: localhost
   become: false
-  when: proxmox_terraform_template_name | default('') != ''
+  when: proxmox_opentofu_template_name | default('') != ''
