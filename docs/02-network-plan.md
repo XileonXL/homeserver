@@ -13,6 +13,10 @@ DHCP pool.
 | `192.168.1.1` | router | gateway, DHCP |
 | `192.168.1.50` | `pve` | Proxmox host, Tailscale subnet router |
 | `192.168.1.60` | `pihole` | LXC |
+| `192.168.1.61` | `gatus` | LXC |
+| `192.168.1.62` | `homeassistant` | VM |
+| `192.168.1.63` | `media` | LXC |
+| `192.168.1.64` | `caddy` | LXC |
 
 Guest IDs are 100 plus the last octet of the address, so Pi-hole is guest 160.
 
@@ -71,6 +75,22 @@ Use a filtering public resolver as secondary when other people depend on the net
 and nobody may be around to fix it. Leave the secondary empty only if a DNS outage is
 something you can always repair on the spot.
 
+## Names and the reverse proxy
+
+Services are reached as `https://<name>.homeserver.lan`, with no port numbers.
+
+- Pi-hole answers those names itself, and every one of them points at the reverse
+  proxy, not at the service.
+- Caddy terminates HTTPS and forwards each name to the right address and port.
+- No public authority issues certificates for an invented domain, so Caddy uses its
+  own. Its root certificate is installed once on each device; until then the browser
+  shows a warning and everything still works.
+- `homeserver.lan` itself is a static start page (Homer) generated from the same
+  list of sites.
+
+SSH and Ansible keep using addresses: a service name leads to the proxy, not to the
+machine behind it.
+
 ## Remote access with Tailscale
 
 Tailscale runs on the **Proxmox host only**, as a subnet router that advertises the
@@ -82,10 +102,15 @@ whole LAN. Guests need no client.
 After the first run, approve the route in the Tailscale admin console and disable key
 expiry for the host. An expired key cuts remote access without warning.
 
-### Ad filtering anywhere
+### DNS over the tailnet
 
-Setting the Pi-hole address as a global nameserver for the tailnet, with "Override
-DNS" enabled, filters ads on your devices wherever they are.
+In the Tailscale admin console, under DNS, add the Pi-hole address as a nameserver
+twice:
+
+- Restricted to the local domain (`homeserver.lan`), so the service names resolve
+  away from home.
+- Unrestricted, with "Override DNS servers" enabled, so ads are filtered on your
+  devices wherever they are.
 
 Do this only once Pi-hole has been stable for a while. If Pi-hole is down, devices on
 the tailnet cannot resolve anything.
@@ -98,7 +123,15 @@ them a filtering secondary instead.
 Clients that arrive through the subnet router are source-NATed to the host's address,
 so Pi-hole sees them as local and its `LOCAL` listening mode is enough.
 
-## Monitoring blind spot
+## Monitoring
 
-A monitor running on the server cannot report that the server is down. Only an
-external check can: a hosted uptime service, or push monitoring from another network.
+Alerts go to a Telegram chat through a bot. Three things send them:
+
+- Proxmox itself, for failed backups and other system notifications.
+- A timer on the host, when the guest storage pool passes 80%.
+- Gatus, when a service stops answering. It checks each service directly, not through
+  the proxy, so a proxy failure is told apart from a service failure.
+
+None of them can report that the whole machine is down, because they all run on it.
+For that the host pings an external dead-man's-switch URL on a timer, and that
+service raises the alarm when the pings stop.

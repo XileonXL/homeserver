@@ -17,11 +17,15 @@ you can change.
 | Home Assistant OS | VM | `192.168.1.62` | home automation |
 | Caddy | LXC | `192.168.1.64` | HTTPS reverse proxy, so services are reached by name with no ports |
 | Gatus | LXC | `192.168.1.61` | status page and service checks, with alerts through Telegram |
+| Jellyfin and qBittorrent | LXC | `192.168.1.63` | media library on a dedicated disk, and a torrent client that downloads onto it |
 
 The host also sends its own alerts to Telegram: Proxmox notifications and a warning
 before the guest storage fills up.
 
-Planned: backups and a Jellyfin media library.
+Every service has a name under a local domain. `https://homeserver.lan` is a start
+page with a link to each one, and `https://status.homeserver.lan` shows which are up.
+
+Planned: backups.
 
 ## How it is organised
 
@@ -52,7 +56,8 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
 | Proxmox endpoint, node name, gateway, container addresses and sizes | `opentofu/envs/homeserver/variables.tf` |
 | Upstream DNS servers for Pi-hole | `ansible/roles/pihole/defaults/main.yml` |
 | Local DNS names served by Pi-hole | `ansible/inventory/group_vars/pihole.yml` |
-| Sites published by the reverse proxy | `ansible/inventory/group_vars/caddy.yml` |
+| Sites published by the reverse proxy, start page | `ansible/inventory/group_vars/caddy.yml` |
+| Service checks | `ansible/inventory/group_vars/gatus.yml` |
 | Node domain, Home Assistant address | `ansible/inventory/group_vars/proxmox.yml` |
 
 ## Getting started
@@ -75,8 +80,7 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    cp .env.example .env && chmod 600 .env
    ```
 
-   Put a Tailscale auth key, a password for the Pi-hole web UI and a Telegram bot
-   token in `.env`.
+   Fill in `.env`; `.env.example` explains each value.
 
 4. **Configure the host.** This joins it to your tailnet as a subnet router, creates
    the API token that OpenTofu uses, and downloads the container template and the
@@ -91,7 +95,7 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    In the Tailscale admin console, approve the advertised route and disable key
    expiry for the host.
 
-5. **Create the guests:** the Pi-hole container and the Home Assistant VM.
+5. **Create the guests:** the containers and the Home Assistant VM.
 
    ```bash
    set -a; source .env; set +a
@@ -101,11 +105,12 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    tofu apply
    ```
 
-6. **Install Pi-hole.**
+6. **Configure everything inside the guests.**
 
    ```bash
+   set -a; source .env; set +a
    cd ansible
-   ansible-playbook site.yml --limit pihole
+   ansible-playbook site.yml
    ```
 
 7. **Point your router at it.** Set the Pi-hole address as the primary DNS server
@@ -113,6 +118,10 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
    [docs/02](docs/02-network-plan.md#dns).
 
 8. **Set up Home Assistant.** Open `http://192.168.1.62` and create your user.
+
+9. **Trust the local certificates.** Install `caddy-root.crt`, which step 6 leaves in
+   the repository root, as a trusted root on your devices, then open
+   `https://homeserver.lan`.
 
 More detail in [ansible/](ansible/README.md) and [opentofu/](opentofu/README.md).
 

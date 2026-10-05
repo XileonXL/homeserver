@@ -60,3 +60,35 @@ grows without bound, such as a media library, lives on its own disk, never on
 A single node gains nothing from an orchestrator, and the services a house depends on
 should not share a machine with experiments. Home Assistant shows the few metrics
 that matter.
+
+## A reverse proxy with its own certificate authority
+
+Names without ports need a proxy, and the Proxmox interface only speaks HTTPS.
+Browsers also withhold features such as the microphone from plain HTTP pages. Caddy
+issues certificates from an internal authority because no public one will for a
+private domain. Buying a real domain would remove the need to install a root
+certificate on each device.
+
+## Alerts through Telegram, not email
+
+A bot needs no mail server, no relay account and no sender reputation, and the
+message arrives where it will be read. Proxmox reaches it through a webhook.
+
+## Gatus instead of a click-configured monitor
+
+Gatus is configured entirely from a file, so the checks live in the repository. It is
+only published as a container image, and containers here do not run Docker, so the
+role builds it from source at a pinned version.
+
+## A static start page
+
+The start page is plain files served by the proxy that already exists. It adds no
+service to keep running, and it does not depend on any of the services it links to.
+
+## Media in one container, on its own disk
+
+Jellyfin and the torrent client share one container, so both see the media disk with
+the same users and permissions. The disk is formatted and mounted on the host and
+bind-mounted into the container; only root on the node can do that, so Ansible does
+it and OpenTofu ignores mount points. Nothing on that disk is backed up.
+
