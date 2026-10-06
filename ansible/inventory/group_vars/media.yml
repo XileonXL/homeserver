@@ -11,6 +11,8 @@ jackett_flaresolverr_url: http://127.0.0.1:8191
 jackett_indexers:
   - dontorrent
   - wolfmax4k
+  - divxtotal
+  - mejortorrent
 jackett_indexer_site_links:
   wolfmax4k: https://wolftorrent.com/
 prowlarr_jackett_url: http://127.0.0.1:9117
