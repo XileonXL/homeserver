@@ -76,6 +76,28 @@
         validate: caddy validate --adapter caddyfile --config %s
       notify: Reload caddy
 
+    # The packaged unit has no restart policy, and every published name depends
+    # on this one process.
+    - name: Create the unit drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/caddy.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Restart Caddy when it fails
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/caddy.service.d/restart.conf
+        content: |
+          [Service]
+          Restart=on-failure
+          RestartSec=5
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
     - name: Enable and start Caddy
       ansible.builtin.service:
         name: caddy
