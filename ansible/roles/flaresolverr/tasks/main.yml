@@ -1,0 +1,144 @@
+---
+- name: Assert the architecture has a release
+  ansible.builtin.assert:
+    that: ansible_facts['architecture'] == 'x86_64'
+    fail_msg: >-
+      FlareSolverr only publishes an x86-64 Linux release; this host is
+      {{ ansible_facts['architecture'] }}.
+    quiet: true
+
+- name: Install FlareSolverr dependencies
+  ansible.builtin.apt:
+    name: "{{ flaresolverr_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the flaresolverr system user
+  ansible.builtin.user:
+    name: "{{ flaresolverr_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ flaresolverr_data_dir }}"
+    create_home: false
+  register: flaresolverr_user_result
+
+# The user does not exist in check mode on a fresh host, so everything that
+# names it as an owner is skipped there.
+- name: Work out whether the service user exists
+  ansible.builtin.set_fact:
+    flaresolverr_ready: "{{ not (ansible_check_mode and flaresolverr_user_result is changed) }}"
+
+- name: Install and run FlareSolverr
+  when: flaresolverr_ready | bool
+  block:
+    - name: Create the data directory
+      ansible.builtin.file:
+        path: "{{ flaresolverr_data_dir }}"
+        state: directory
+        owner: "{{ flaresolverr_user }}"
+        group: "{{ flaresolverr_user }}"
+        mode: "0750"
+
+    - name: Check for the version marker
+      ansible.builtin.stat:
+        path: "{{ flaresolverr_version_file }}"
+      register: flaresolverr_version_stat
+
+    - name: Read the installed version
+      ansible.builtin.slurp:
+        src: "{{ flaresolverr_version_file }}"
+      register: flaresolverr_version_slurp
+      when: flaresolverr_version_stat.stat.exists
+
+    - name: Set the installed version
+      ansible.builtin.set_fact:
+        flaresolverr_installed_version: >-
+          {{ (flaresolverr_version_slurp.content | b64decode | trim) if flaresolverr_version_stat.stat.exists else '' }}
+
+    - name: Replace the program directory
+      when:
+        - not ansible_check_mode
+        - flaresolverr_installed_version != flaresolverr_version
+      block:
+        - name: Remove the previous program directory
+          ansible.builtin.file:
+            path: "{{ flaresolverr_install_dir }}"
+            state: absent
+
+        - name: Create the program directory
+          ansible.builtin.file:
+            path: "{{ flaresolverr_install_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        # The archive has one top-level directory, which is stripped.
+        - name: Download and unpack FlareSolverr
+          ansible.builtin.unarchive:
+            src: "{{ flaresolverr_download_url }}"
+            dest: "{{ flaresolverr_install_dir }}"
+            remote_src: true
+            owner: root
+            group: root
+            extra_opts:
+              - --strip-components=1
+          notify: Restart flaresolverr
+
+        - name: Check for the FlareSolverr executable
+          ansible.builtin.stat:
+            path: "{{ flaresolverr_install_dir }}/flaresolverr"
+          register: flaresolverr_binary_stat
+
+        - name: Assert the archive had the expected layout
+          ansible.builtin.assert:
+            that:
+              - flaresolverr_binary_stat.stat.exists
+              - flaresolverr_binary_stat.stat.xusr
+            fail_msg: >-
+              {{ flaresolverr_install_dir }}/flaresolverr is missing or not executable
+              after unpacking {{ flaresolverr_download_url }}.
+            quiet: true
+
+        # Written last: a failed install leaves no marker and is retried.
+        - name: Record the installed version
+          ansible.builtin.copy:
+            content: "{{ flaresolverr_version }}\n"
+            dest: "{{ flaresolverr_version_file }}"
+            owner: root
+            group: root
+            mode: "0644"
+
+    # After the program and its directories exist: the restart this triggers would
+    # fail on a host where they are still missing.
+    - name: Install the systemd unit
+      ansible.builtin.template:
+        src: flaresolverr.service.j2
+        dest: /etc/systemd/system/flaresolverr.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart flaresolverr
+
+    - name: Load the unit and apply pending restarts now
+      ansible.builtin.meta: flush_handlers
+      when: not ansible_check_mode
+
+    - name: Enable and start FlareSolverr
+      ansible.builtin.service:
+        name: flaresolverr
+        state: started
+        enabled: true
+      # In check mode on a fresh host the unit has not been written.
+      when: not ansible_check_mode
+
+    # It tests its browser before listening, and its clients check it is reachable.
+    - name: Wait for FlareSolverr to listen
+      ansible.builtin.wait_for:
+        host: "{{ flaresolverr_host }}"
+        port: "{{ flaresolverr_port }}"
+        timeout: 120
+      when: not ansible_check_mode

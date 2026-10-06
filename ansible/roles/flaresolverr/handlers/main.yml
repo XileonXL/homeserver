@@ -1,0 +1,11 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart flaresolverr
+  ansible.builtin.service:
+    name: flaresolverr
+    state: restarted
+  # In check mode on a fresh host the unit has not been written.
+  when: not ansible_check_mode

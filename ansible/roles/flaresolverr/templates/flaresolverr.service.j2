@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+[Unit]
+Description=FlareSolverr browser challenge proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{ flaresolverr_user }}
+Group={{ flaresolverr_user }}
+Environment=HOME={{ flaresolverr_data_dir }}
+Environment=HOST={{ flaresolverr_host }}
+Environment=PORT={{ flaresolverr_port }}
+WorkingDirectory={{ flaresolverr_data_dir }}
+ExecStart={{ flaresolverr_install_dir }}/flaresolverr
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ flaresolverr_data_dir }}
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

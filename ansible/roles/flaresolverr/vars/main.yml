@@ -1,0 +1,4 @@
+---
+# Holds the installed version. It lives inside the program directory so that
+# removing the directory also removes the marker.
+flaresolverr_version_file: "{{ flaresolverr_install_dir }}/.installed-version"
