@@ -19,6 +19,7 @@ appliance and is not managed here.
 | `jellyfin` | `media` | Installs Jellyfin from its apt repository and creates the library directories |
 | `qbittorrent` | `media` | Installs headless qBittorrent, downloading onto the media disk |
 | `flaresolverr` | `media` | Installs FlareSolverr from the release tarball, for indexers behind a browser challenge |
+| `jackett` | `media` | Installs Jackett from the release tarball, for sites Prowlarr has no definition for |
 | `prowlarr` | `media` | Installs Prowlarr from the release tarball, as a search front end for qBittorrent |
 
 Hosts and addresses are in `inventory/hosts.yml`; per-group settings in

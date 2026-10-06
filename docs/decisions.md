@@ -96,6 +96,12 @@ Some indexers sit behind a browser challenge that Prowlarr cannot pass on its ow
 FlareSolverr runs next to it for those, listening on the loopback address only
 because it has no authentication, and only indexers tagged for it go through it.
 
+Prowlarr's indexer definitions are declarative and cannot handle a site whose download
+links need computation. Jackett has code for some of those, so it runs behind Prowlarr,
+which reaches each of its indexers as a Torznab feed; searching still happens in one
+place. That container resolves names through Pi-hole instead of the gateway, because
+the resolver behind a home router may block the sites the indexers search.
+
 
 ## Home Assistant is defined but powered off
 
