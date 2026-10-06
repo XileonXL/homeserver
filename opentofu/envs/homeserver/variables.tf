@@ -34,7 +34,7 @@ variable "prefix_length" {
 }
 
 variable "containers" {
-  description = "LXC containers to create, keyed by hostname. Convention: vm_id is 100 plus the last octet of the IP"
+  description = "LXC containers to create, keyed by hostname. Convention: vm_id is 100 plus the last octet of the IP. dns overrides the resolvers of one container, which are the gateway otherwise"
   type = map(object({
     vm_id  = number
     ip     = string
@@ -42,6 +42,7 @@ variable "containers" {
     memory = number
     swap   = number
     disk   = number
+    dns    = optional(list(string))
   }))
   default = {
     pihole = {
@@ -75,6 +76,9 @@ variable "containers" {
       memory = 2048
       swap   = 512
       disk   = 16
+      # Pi-hole: the router forwards to a resolver that blocks some of the sites
+      # the indexers search.
+      dns = ["192.168.1.60"]
     }
   }
 }

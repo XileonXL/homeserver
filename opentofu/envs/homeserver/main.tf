@@ -42,9 +42,9 @@ resource "proxmox_virtual_environment_container" "this" {
     hostname = each.key
 
     dns {
-      # The gateway, not Pi-hole itself: the container needs a resolver before
-      # Pi-hole is installed.
-      servers = [var.gateway]
+      # The gateway by default, not Pi-hole itself: the container needs a
+      # resolver before Pi-hole is installed.
+      servers = coalesce(each.value.dns, [var.gateway])
     }
 
     ip_config {
