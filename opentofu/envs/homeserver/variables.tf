@@ -85,17 +85,19 @@ variable "haos_image_file_id" {
 }
 
 variable "homeassistant" {
-  description = "Home Assistant OS virtual machine. memory is in MB, disk in GB"
+  description = "Home Assistant OS virtual machine. memory is in MB, disk in GB. started = false keeps the VM and its disk but powers it off and leaves it out of the boot sequence"
   type = object({
-    vm_id  = number
-    cores  = number
-    memory = number
-    disk   = number
+    vm_id   = number
+    cores   = number
+    memory  = number
+    disk    = number
+    started = optional(bool, true)
   })
   default = {
-    vm_id  = 162
-    cores  = 4
-    memory = 2048
-    disk   = 64
+    vm_id   = 162
+    cores   = 4
+    memory  = 2048
+    disk    = 64
+    started = false
   }
 }

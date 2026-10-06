@@ -80,8 +80,8 @@ resource "proxmox_virtual_environment_vm" "homeassistant" {
   bios          = "ovmf"
   machine       = "q35"
   scsi_hardware = "virtio-scsi-single"
-  on_boot       = true
-  started       = true
+  on_boot       = var.homeassistant.started
+  started       = var.homeassistant.started
 
   cpu {
     cores = var.homeassistant.cores
