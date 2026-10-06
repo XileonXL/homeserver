@@ -11,10 +11,6 @@ caddy_sites:
     title: Pi-hole
     icon: fas fa-shield-halved
     upstream: http://192.168.1.60:80
-  - name: homeassistant.homeserver.lan
-    title: Home Assistant
-    icon: fas fa-house
-    upstream: http://192.168.1.62:80
   - name: status.homeserver.lan
     title: Status
     icon: fas fa-heart-pulse
