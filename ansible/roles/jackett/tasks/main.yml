@@ -1,0 +1,198 @@
+---
+- name: Install Jackett dependencies
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - tar
+      - "{{ jackett_libicu_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the jackett system user
+  ansible.builtin.user:
+    name: "{{ jackett_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ jackett_data_dir }}"
+    create_home: false
+  register: jackett_user_result
+
+# The user does not exist in check mode on a fresh host, so everything that
+# names it as an owner is skipped there.
+- name: Work out whether the service user exists
+  ansible.builtin.set_fact:
+    jackett_ready: "{{ not (ansible_check_mode and jackett_user_result is changed) }}"
+
+- name: Install and run Jackett
+  when: jackett_ready | bool
+  block:
+    - name: Create the data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ jackett_user }}"
+        group: "{{ jackett_user }}"
+        mode: "0750"
+      loop:
+        - "{{ jackett_data_dir }}"
+        - "{{ jackett_data_dir }}/Indexers"
+
+    # Jackett fills in the rest, including its API key, and rewrites the file, so
+    # it is only seeded.
+    - name: Seed the server configuration
+      ansible.builtin.template:
+        src: ServerConfig.json.j2
+        dest: "{{ jackett_data_dir }}/ServerConfig.json"
+        owner: "{{ jackett_user }}"
+        group: "{{ jackett_user }}"
+        mode: "0600"
+        force: false
+
+    # An indexer is enabled by the presence of its file. An empty list of settings
+    # keeps the defaults of the installed version, such as the current site address.
+    - name: Enable the indexers
+      ansible.builtin.copy:
+        content: "[]\n"
+        dest: "{{ jackett_data_dir }}/Indexers/{{ item }}.json"
+        owner: "{{ jackett_user }}"
+        group: "{{ jackett_user }}"
+        mode: "0600"
+        force: false
+      loop: "{{ jackett_indexers }}"
+      notify: Restart jackett
+
+    # Jackett rewrites these files with its own bookkeeping, so only the one
+    # setting is replaced. In check mode on a fresh host the file is not there.
+    - name: Read the settings of the indexers that have a site link
+      ansible.builtin.slurp:
+        src: "{{ jackett_data_dir }}/Indexers/{{ item.key }}.json"
+      loop: "{{ jackett_indexer_site_links | dict2items }}"
+      register: jackett_indexer_slurp
+      failed_when: false
+
+    - name: Set the site links
+      ansible.builtin.copy:
+        content: "{{ [jackett_indexer_others, [jackett_indexer_site_link]] | flatten(1) | to_nice_json }}\n"
+        dest: "{{ jackett_data_dir }}/Indexers/{{ item.item.key }}.json"
+        owner: "{{ jackett_user }}"
+        group: "{{ jackett_user }}"
+        mode: "0600"
+      loop: "{{ jackett_indexer_slurp.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+      when:
+        - item.content is defined
+        - jackett_indexer_site_link not in jackett_indexer_settings
+      vars:
+        jackett_indexer_settings: "{{ item.content | b64decode | from_json }}"
+        jackett_indexer_others: "{{ jackett_indexer_settings | rejectattr('id', 'equalto', 'sitelink') | list }}"
+        jackett_indexer_site_link:
+          id: sitelink
+          type: inputstring
+          name: Site Link
+          value: "{{ item.item.value }}"
+      notify: Restart jackett
+
+    - name: Check for the version marker
+      ansible.builtin.stat:
+        path: "{{ jackett_version_file }}"
+      register: jackett_version_stat
+
+    - name: Read the installed version
+      ansible.builtin.slurp:
+        src: "{{ jackett_version_file }}"
+      register: jackett_version_slurp
+      when: jackett_version_stat.stat.exists
+
+    - name: Set the installed version
+      ansible.builtin.set_fact:
+        jackett_installed_version: >-
+          {{ (jackett_version_slurp.content | b64decode | trim) if jackett_version_stat.stat.exists else '' }}
+
+    - name: Replace the program directory
+      when:
+        - not ansible_check_mode
+        - jackett_installed_version != jackett_version
+      block:
+        - name: Remove the previous program directory
+          ansible.builtin.file:
+            path: "{{ jackett_install_dir }}"
+            state: absent
+
+        - name: Create the program directory
+          ansible.builtin.file:
+            path: "{{ jackett_install_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        # The archive has one top-level directory, which is stripped.
+        - name: Download and unpack Jackett
+          ansible.builtin.unarchive:
+            src: "{{ jackett_download_url }}"
+            dest: "{{ jackett_install_dir }}"
+            remote_src: true
+            owner: root
+            group: root
+            extra_opts:
+              - --strip-components=1
+          notify: Restart jackett
+
+        - name: Check for the Jackett executable
+          ansible.builtin.stat:
+            path: "{{ jackett_install_dir }}/jackett"
+          register: jackett_binary_stat
+
+        - name: Assert the archive had the expected layout
+          ansible.builtin.assert:
+            that:
+              - jackett_binary_stat.stat.exists
+              - jackett_binary_stat.stat.xusr
+            fail_msg: >-
+              {{ jackett_install_dir }}/jackett is missing or not executable after
+              unpacking {{ jackett_download_url }}.
+            quiet: true
+
+        # Written last: a failed install leaves no marker and is retried.
+        - name: Record the installed version
+          ansible.builtin.copy:
+            content: "{{ jackett_version }}\n"
+            dest: "{{ jackett_version_file }}"
+            owner: root
+            group: root
+            mode: "0644"
+
+    # After the program and its directories exist: the restart this triggers would
+    # fail on a host where they are still missing.
+    - name: Install the systemd unit
+      ansible.builtin.template:
+        src: jackett.service.j2
+        dest: /etc/systemd/system/jackett.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart jackett
+
+    - name: Load the unit and apply pending restarts now
+      ansible.builtin.meta: flush_handlers
+      when: not ansible_check_mode
+
+    - name: Enable and start Jackett
+      ansible.builtin.service:
+        name: jackett
+        state: started
+        enabled: true
+      # In check mode on a fresh host the unit has not been written.
+      when: not ansible_check_mode
+
+    # Its clients check that it is reachable before they accept it.
+    - name: Wait for Jackett to listen
+      ansible.builtin.wait_for:
+        host: "{{ jackett_host }}"
+        port: "{{ jackett_port }}"
+        timeout: 120
+      when: not ansible_check_mode

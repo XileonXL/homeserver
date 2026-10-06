@@ -1,0 +1,8 @@
+---
+jackett_arch_map:
+  x86_64: AMDx64
+  aarch64: ARM64
+
+# Holds the installed version. It lives inside the program directory so that
+# removing the directory also removes the marker.
+jackett_version_file: "{{ jackett_install_dir }}/.installed-version"

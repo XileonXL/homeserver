@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Jackett indexer proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{ jackett_user }}
+Group={{ jackett_user }}
+Environment=HOME={{ jackett_data_dir }}
+WorkingDirectory={{ jackett_data_dir }}
+# The program directory is owned by root, so the built-in updater cannot work.
+ExecStart={{ jackett_install_dir }}/jackett --NoRestart --NoUpdates --DataFolder={{ jackett_data_dir }}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ jackett_data_dir }}
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

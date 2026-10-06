@@ -1,0 +1,30 @@
+---
+jackett_version: 0.24.2798
+# Release asset architecture, derived from the host; see jackett_arch_map.
+jackett_arch: "{{ jackett_arch_map[ansible_facts['architecture']] }}"
+jackett_download_url: >-
+  https://github.com/Jackett/Jackett/releases/download/v{{ jackett_version }}/Jackett.Binaries.Linux{{ jackett_arch }}.tar.gz
+
+jackett_install_dir: /opt/Jackett
+# Settings and indexer configuration. Jackett rewrites ServerConfig.json here itself.
+jackett_data_dir: /var/lib/jackett
+jackett_user: jackett
+
+# The web interface has no password, so it only listens where its client runs.
+jackett_host: 127.0.0.1
+jackett_port: 9117
+
+# URL of a FlareSolverr instance, for sites behind a browser challenge. Empty
+# means none. Like the two settings above, it is only written on the first run.
+jackett_flaresolverr_url: ""
+
+# Identifiers of the public indexers to enable, as Jackett names them (the last
+# part of an indexer's Torznab feed URL). Each keeps its default settings.
+jackett_indexers: []
+
+# Site address per indexer identifier, for a site that has moved while the
+# installed version still has its old address.
+jackett_indexer_site_links: {}
+
+# The ICU library has a versioned package name; this is the one Debian 13 ships.
+jackett_libicu_package: libicu76

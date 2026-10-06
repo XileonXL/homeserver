@@ -1,0 +1,7 @@
+{
+  "Port": {{ jackett_port }},
+  "LocalBindAddress": {{ jackett_host | to_json }},
+  "AllowExternal": false,
+  "UpdateDisabled": true,
+  "FlareSolverrUrl": {{ jackett_flaresolverr_url | to_json }}
+}
