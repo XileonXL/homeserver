@@ -1,6 +1,18 @@
 ---
+# The guest agent only answers while the VM runs. A VM that is powered off on
+# purpose is skipped; its settings are stored on its disk and survive.
+- name: Read the state of the Home Assistant OS VM
+  ansible.builtin.command:
+    argv: [qm, status, "{{ haos_network_vm_id }}"]
+  register: haos_network_vm_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Set a static address on Home Assistant OS
-  when: haos_network_address | length > 0
+  when:
+    - haos_network_address | length > 0
+    - "'status: running' in haos_network_vm_status.stdout"
   block:
     - name: Find the wired connection inside the guest
       ansible.builtin.command:
@@ -89,7 +101,9 @@
              | map('trim') | list }}
 
 - name: Trust the reverse proxies in Home Assistant
-  when: haos_network_trusted_proxies | length > 0
+  when:
+    - haos_network_trusted_proxies | length > 0
+    - "'status: running' in haos_network_vm_status.stdout"
   block:
     - name: Read the stored HTTP settings from the guest
       ansible.builtin.command:
