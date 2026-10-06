@@ -12,5 +12,10 @@ prowlarr_user: prowlarr
 
 prowlarr_port: 9696
 
+# URL of a FlareSolverr instance, for indexers behind a browser challenge. Empty
+# means none. Only indexers that carry prowlarr_flaresolverr_tag go through it.
+prowlarr_flaresolverr_url: ""
+prowlarr_flaresolverr_tag: flaresolverr
+
 # The ICU library has a versioned package name; this is the one Debian 13 ships.
 prowlarr_libicu_package: libicu76

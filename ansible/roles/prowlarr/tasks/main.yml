@@ -131,3 +131,103 @@
         enabled: true
       # In check mode on a fresh host the unit has not been written.
       when: not ansible_check_mode
+
+# Prowlarr keeps this in its database, so it is set through the API. Indexers are
+# added by hand; give one the tag to send it through FlareSolverr.
+- name: Configure the FlareSolverr proxy
+  when:
+    - prowlarr_flaresolverr_url | length > 0
+    - prowlarr_ready | bool
+  block:
+    # Prowlarr writes config.xml, with its API key, on the first start.
+    - name: Wait for Prowlarr to listen
+      ansible.builtin.wait_for:
+        port: "{{ prowlarr_port }}"
+        timeout: 120
+      when: not ansible_check_mode
+
+    - name: Check for the Prowlarr configuration file
+      ansible.builtin.stat:
+        path: "{{ prowlarr_data_dir }}/config.xml"
+      register: prowlarr_config_stat
+
+    - name: Set the proxy through the API
+      when: prowlarr_config_stat.stat.exists
+      vars:
+        prowlarr_api_url: "http://127.0.0.1:{{ prowlarr_port }}/api/v1"
+        prowlarr_api_key: >-
+          {{ prowlarr_config_slurp.content | b64decode | regex_search('<ApiKey>([^<]+)</ApiKey>', '\1') | first }}
+        prowlarr_tag_existing: >-
+          {{ prowlarr_tags.json | selectattr('label', 'equalto', prowlarr_flaresolverr_tag) | list }}
+      block:
+        - name: Read the Prowlarr configuration file
+          ansible.builtin.slurp:
+            src: "{{ prowlarr_data_dir }}/config.xml"
+          register: prowlarr_config_slurp
+          no_log: true
+
+        - name: Read the tags
+          ansible.builtin.uri:
+            url: "{{ prowlarr_api_url }}/tag"
+            headers:
+              X-Api-Key: "{{ prowlarr_api_key }}"
+            return_content: true
+          register: prowlarr_tags
+          check_mode: false
+          no_log: true
+
+        - name: Create the FlareSolverr tag
+          ansible.builtin.uri:
+            url: "{{ prowlarr_api_url }}/tag"
+            method: POST
+            headers:
+              X-Api-Key: "{{ prowlarr_api_key }}"
+            body_format: json
+            body:
+              label: "{{ prowlarr_flaresolverr_tag }}"
+            status_code: [200, 201]
+          register: prowlarr_tag_created
+          changed_when: true
+          no_log: true
+          when: prowlarr_tag_existing | length == 0
+
+        - name: Read the indexer proxies
+          ansible.builtin.uri:
+            url: "{{ prowlarr_api_url }}/indexerproxy"
+            headers:
+              X-Api-Key: "{{ prowlarr_api_key }}"
+            return_content: true
+          register: prowlarr_proxies
+          check_mode: false
+          no_log: true
+
+        - name: Set the FlareSolverr proxy
+          ansible.builtin.uri:
+            url: "{{ prowlarr_api_url }}/indexerproxy{{ '/' ~ prowlarr_proxy_existing[0].id if prowlarr_proxy_existing else '' }}"
+            method: "{{ 'PUT' if prowlarr_proxy_existing else 'POST' }}"
+            headers:
+              X-Api-Key: "{{ prowlarr_api_key }}"
+            body_format: json
+            body: "{{ prowlarr_proxy_existing[0] | default({}) | combine(prowlarr_proxy_desired) }}"
+            status_code: [200, 201, 202]
+          changed_when: true
+          no_log: true
+          when: >-
+            prowlarr_proxy_existing | length == 0
+            or prowlarr_proxy_existing[0].tags != prowlarr_proxy_desired.tags
+            or (prowlarr_proxy_existing[0].fields | selectattr('name', 'equalto', 'host')
+                | map(attribute='value') | first) != prowlarr_flaresolverr_url
+          vars:
+            prowlarr_proxy_existing: >-
+              {{ prowlarr_proxies.json | selectattr('implementation', 'equalto', 'FlareSolverr') | list }}
+            prowlarr_proxy_desired:
+              name: FlareSolverr
+              implementation: FlareSolverr
+              configContract: FlareSolverrSettings
+              fields:
+                - name: host
+                  value: "{{ prowlarr_flaresolverr_url }}"
+                - name: requestTimeout
+                  value: 60
+              tags:
+                - "{{ (prowlarr_tag_existing | first | default(prowlarr_tag_created.json | default({}))).id | default(0) }}"
