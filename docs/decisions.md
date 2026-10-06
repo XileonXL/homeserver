@@ -92,3 +92,10 @@ the same users and permissions. The disk is formatted and mounted on the host an
 bind-mounted into the container; only root on the node can do that, so Ansible does
 it and OpenTofu ignores mount points. Nothing on that disk is backed up.
 
+
+## Home Assistant is defined but powered off
+
+There is nothing in the house for it to control yet, so the VM would only hold memory
+and cores. `started = false` keeps the VM and its disk, and its name, proxy site and
+status check are removed so nothing links to or alerts on a guest that is off. Set
+`started = true` and restore those three entries when the first device arrives.
