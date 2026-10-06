@@ -63,4 +63,5 @@
   roles:
     - role: jellyfin
     - role: qbittorrent
+    - role: flaresolverr
     - role: prowlarr
