@@ -5,3 +5,13 @@ qbittorrent_trusted_proxies:
   - 192.168.1.64
 
 prowlarr_flaresolverr_url: http://127.0.0.1:8191/
+
+# Sites Prowlarr has no definition for are searched through Jackett.
+jackett_flaresolverr_url: http://127.0.0.1:8191
+jackett_indexers:
+  - dontorrent
+  - wolfmax4k
+jackett_indexer_site_links:
+  wolfmax4k: https://wolftorrent.com/
+prowlarr_jackett_url: http://127.0.0.1:9117
+prowlarr_jackett_indexers: "{{ jackett_indexers }}"
