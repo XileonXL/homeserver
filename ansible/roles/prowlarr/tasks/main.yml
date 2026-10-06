@@ -132,12 +132,11 @@
       # In check mode on a fresh host the unit has not been written.
       when: not ansible_check_mode
 
-# Prowlarr keeps this in its database, so it is set through the API. Indexers are
-# added by hand; give one the tag to send it through FlareSolverr.
-- name: Configure the FlareSolverr proxy
+# Prowlarr keeps these settings in its database, so they are set through the API.
+- name: Configure Prowlarr through its API
   when:
-    - prowlarr_flaresolverr_url | length > 0
     - prowlarr_ready | bool
+    - prowlarr_flaresolverr_url | length > 0 or prowlarr_jackett_indexers | length > 0
   block:
     # Prowlarr writes config.xml, with its API key, on the first start.
     - name: Wait for Prowlarr to listen
@@ -151,21 +150,22 @@
         path: "{{ prowlarr_data_dir }}/config.xml"
       register: prowlarr_config_stat
 
-    - name: Set the proxy through the API
+    - name: Read the Prowlarr configuration file
+      ansible.builtin.slurp:
+        src: "{{ prowlarr_data_dir }}/config.xml"
+      register: prowlarr_config_slurp
+      no_log: true
       when: prowlarr_config_stat.stat.exists
+
+    # Indexers are added by hand; give one the tag to send it through FlareSolverr.
+    - name: Set the FlareSolverr proxy
+      when:
+        - prowlarr_config_stat.stat.exists
+        - prowlarr_flaresolverr_url | length > 0
       vars:
-        prowlarr_api_url: "http://127.0.0.1:{{ prowlarr_port }}/api/v1"
-        prowlarr_api_key: >-
-          {{ prowlarr_config_slurp.content | b64decode | regex_search('<ApiKey>([^<]+)</ApiKey>', '\1') | first }}
         prowlarr_tag_existing: >-
           {{ prowlarr_tags.json | selectattr('label', 'equalto', prowlarr_flaresolverr_tag) | list }}
       block:
-        - name: Read the Prowlarr configuration file
-          ansible.builtin.slurp:
-            src: "{{ prowlarr_data_dir }}/config.xml"
-          register: prowlarr_config_slurp
-          no_log: true
-
         - name: Read the tags
           ansible.builtin.uri:
             url: "{{ prowlarr_api_url }}/tag"
@@ -201,7 +201,7 @@
           check_mode: false
           no_log: true
 
-        - name: Set the FlareSolverr proxy
+        - name: Create or update the FlareSolverr proxy
           ansible.builtin.uri:
             url: "{{ prowlarr_api_url }}/indexerproxy{{ '/' ~ prowlarr_proxy_existing[0].id if prowlarr_proxy_existing else '' }}"
             method: "{{ 'PUT' if prowlarr_proxy_existing else 'POST' }}"
@@ -231,3 +231,67 @@
                   value: 60
               tags:
                 - "{{ (prowlarr_tag_existing | first | default(prowlarr_tag_created.json | default({}))).id | default(0) }}"
+
+    - name: Check for the Jackett configuration file
+      ansible.builtin.stat:
+        path: "{{ prowlarr_jackett_config_file }}"
+      register: prowlarr_jackett_stat
+      when: prowlarr_jackett_indexers | length > 0
+
+    - name: Add the Jackett indexers
+      when:
+        - prowlarr_config_stat.stat.exists
+        - prowlarr_jackett_indexers | length > 0
+        - prowlarr_jackett_stat.stat.exists
+      block:
+        - name: Read the Jackett configuration file
+          ansible.builtin.slurp:
+            src: "{{ prowlarr_jackett_config_file }}"
+          register: prowlarr_jackett_slurp
+          no_log: true
+
+        - name: Read the indexers
+          ansible.builtin.uri:
+            url: "{{ prowlarr_api_url }}/indexer"
+            headers:
+              X-Api-Key: "{{ prowlarr_api_key }}"
+            return_content: true
+          register: prowlarr_indexers
+          check_mode: false
+          no_log: true
+
+        # 1 is the application profile every installation starts with. Prowlarr
+        # searches the site before it accepts the indexer, which can take a while
+        # and fails while the site is unreachable.
+        - name: Add a Torznab indexer for each Jackett indexer
+          ansible.builtin.uri:
+            url: "{{ prowlarr_api_url }}/indexer"
+            timeout: 180
+            method: POST
+            headers:
+              X-Api-Key: "{{ prowlarr_api_key }}"
+            body_format: json
+            body:
+              name: "{{ item }} (Jackett)"
+              implementation: Torznab
+              configContract: TorznabSettings
+              protocol: torrent
+              enable: true
+              appProfileId: 1
+              priority: 25
+              fields:
+                - name: baseUrl
+                  value: "{{ prowlarr_jackett_feed }}"
+                - name: apiPath
+                  value: /api
+                - name: apiKey
+                  value: "{{ (prowlarr_jackett_slurp.content | b64decode | from_json).APIKey }}"
+            status_code: [200, 201]
+          changed_when: true
+          no_log: true
+          loop: "{{ prowlarr_jackett_indexers }}"
+          when: >-
+            prowlarr_jackett_feed not in (prowlarr_indexers.json | map(attribute='fields') | flatten
+              | selectattr('name', 'equalto', 'baseUrl') | map(attribute='value') | list)
+          vars:
+            prowlarr_jackett_feed: "{{ prowlarr_jackett_url }}/api/v2.0/indexers/{{ item }}/results/torznab/"

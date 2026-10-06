@@ -6,3 +6,8 @@ prowlarr_arch_map:
 # Holds the installed version. It lives inside the program directory so that
 # removing the directory also removes the marker.
 prowlarr_version_file: "{{ prowlarr_install_dir }}/.installed-version"
+
+prowlarr_api_url: "http://127.0.0.1:{{ prowlarr_port }}/api/v1"
+# Prowlarr generates the key on its first start and keeps it in config.xml.
+prowlarr_api_key: >-
+  {{ prowlarr_config_slurp.content | b64decode | regex_search('<ApiKey>([^<]+)</ApiKey>', '\1') | first }}

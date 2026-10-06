@@ -17,5 +17,12 @@ prowlarr_port: 9696
 prowlarr_flaresolverr_url: ""
 prowlarr_flaresolverr_tag: flaresolverr
 
+# URL of a Jackett instance on the same host, for sites that Prowlarr has no
+# definition for. Each identifier in prowlarr_jackett_indexers is added as a
+# Torznab indexer. The API key is read from the file Jackett keeps it in.
+prowlarr_jackett_url: ""
+prowlarr_jackett_indexers: []
+prowlarr_jackett_config_file: /var/lib/jackett/ServerConfig.json
+
 # The ICU library has a versioned package name; this is the one Debian 13 ships.
 prowlarr_libicu_package: libicu76
