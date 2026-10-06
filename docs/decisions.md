@@ -92,6 +92,10 @@ the same users and permissions. The disk is formatted and mounted on the host an
 bind-mounted into the container; only root on the node can do that, so Ansible does
 it and OpenTofu ignores mount points. Nothing on that disk is backed up.
 
+Some indexers sit behind a browser challenge that Prowlarr cannot pass on its own.
+FlareSolverr runs next to it for those, listening on the loopback address only
+because it has no authentication, and only indexers tagged for it go through it.
+
 
 ## Home Assistant is defined but powered off
 
