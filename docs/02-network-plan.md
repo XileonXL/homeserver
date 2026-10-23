@@ -141,7 +141,8 @@ Manual steps in the Tailscale admin console:
 1. Create a reusable, pre-authorized auth key tagged `tag:homeserver`, and allow the tag
    under `tagOwners` in the access controls. Put the key in `.env`.
 2. DNS, Add nameserver, Custom: Caddy's Tailscale address, "Restrict to domain"
-   `homeserver.lan`.
+   `homeserver.lan`. Leave the global nameservers empty and "Override local DNS" off: a
+   192.168.1.x global nameserver breaks all DNS on networks that reuse that range.
 3. On the laptop, enable "Use Tailscale DNS settings".
 4. Restrict the tag in the access controls: only your devices, only HTTPS and DNS, and
    nothing outbound from the tag. SSH to Caddy goes through `pve`, not its tailnet address.
@@ -149,7 +150,9 @@ Manual steps in the Tailscale admin console:
    ```json
    "tagOwners": {"tag:homeserver": ["autogroup:admin"]},
    "acls": [
-     {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:homeserver:443,53"]}
+     {"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+     {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:homeserver:80,443,53"]},
+     {"action": "accept", "src": ["autogroup:member"], "dst": ["192.168.1.0/24:*"]}
    ]
    ```
 
