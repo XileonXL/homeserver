@@ -23,6 +23,22 @@
   # In check mode the repository above is not really added, so the package is unknown.
   when: not (ansible_check_mode and tailscale_repo is changed)
 
+# A container without the tun device cannot run tailscaled; say so instead of failing
+# obscurely. On a container the lxc_tun role on the Proxmox host adds it.
+- name: Check for /dev/net/tun
+  ansible.builtin.stat:
+    path: /dev/net/tun
+  register: tailscale_tun
+
+- name: Assert /dev/net/tun exists
+  ansible.builtin.assert:
+    that: tailscale_tun.stat.exists
+    fail_msg: >-
+      /dev/net/tun is missing. In a container, run the play for the Proxmox host first
+      (role lxc_tun), which adds the device and restarts the container.
+    quiet: true
+  when: not ansible_check_mode
+
 - name: Enable and start tailscaled
   ansible.builtin.service:
     name: tailscaled
@@ -46,7 +62,7 @@
   ansible.builtin.meta: flush_handlers
 
 # The node state cannot be read before the package exists, so check mode stops here.
-- name: Join the tailnet and converge routes
+- name: Join the tailnet and converge settings
   when: not ansible_check_mode
   block:
     - name: Read Tailscale status
@@ -55,34 +71,113 @@
       changed_when: false
       failed_when: tailscale_status.stdout | length == 0
 
-    - name: Fail when login is needed but no auth key was provided
-      ansible.builtin.assert:
-        that: tailscale_authkey | length > 0
-        fail_msg: >-
-          Node is not logged in (BackendState is
-          {{ (tailscale_status.stdout | from_json).BackendState }}).
-          Export TAILSCALE_AUTHKEY and run again.
-        quiet: true
-      when: (tailscale_status.stdout | from_json).BackendState != 'Running'
-
     - name: Join the tailnet
-      ansible.builtin.command:
-        argv: >-
-          {{ ['tailscale', 'up', '--auth-key=' ~ tailscale_authkey]
-             + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
-                if tailscale_advertise_routes | length > 0 else []) }}
-      changed_when: true
-      no_log: true
       when: (tailscale_status.stdout | from_json).BackendState != 'Running'
+      block:
+        - name: Fail when login is needed but no auth key was provided
+          ansible.builtin.assert:
+            that: tailscale_authkey | length > 0
+            fail_msg: >-
+              Node is not logged in (BackendState is
+              {{ (tailscale_status.stdout | from_json).BackendState }}).
+              Export TAILSCALE_AUTHKEY and run again.
+            quiet: true
+
+        # The key is passed as a file so it never shows in the process list.
+        - name: Read the help of tailscale up
+          ansible.builtin.command: tailscale up --help
+          register: tailscale_up_help
+          changed_when: false
+          failed_when: false
+
+        - name: Assert tailscale up reads the auth key from a file
+          ansible.builtin.assert:
+            that: "'\"file:\"' in tailscale_up_help.stdout ~ tailscale_up_help.stderr"
+            fail_msg: This Tailscale version cannot read --auth-key from a file; upgrade it.
+            quiet: true
+
+        - name: Write the auth key to a temporary file
+          ansible.builtin.copy:
+            content: "{{ tailscale_authkey }}"
+            dest: "{{ tailscale_authkey_file }}"
+            owner: root
+            group: root
+            mode: "0600"
+          no_log: true
+
+        - name: Join the tailnet
+          ansible.builtin.command:
+            argv: >-
+              {{ ['tailscale', 'up', '--auth-key=file:' ~ tailscale_authkey_file,
+                  '--accept-dns=' ~ (tailscale_accept_dns | default(false, true) | bool | string | lower)]
+                 + (['--hostname=' ~ tailscale_hostname] if tailscale_hostname | length > 0 else [])
+                 + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
+                    if tailscale_advertise_routes | length > 0 else [])
+                 + (['--advertise-tags=' ~ (tailscale_advertise_tags | join(','))]
+                    if tailscale_advertise_tags | length > 0 else []) }}
+          changed_when: true
+
+      always:
+        - name: Remove the temporary auth key file
+          ansible.builtin.file:
+            path: "{{ tailscale_authkey_file }}"
+            state: absent
 
     - name: Read current Tailscale preferences
       ansible.builtin.command: tailscale debug prefs
       register: tailscale_prefs
       changed_when: false
 
-    - name: Converge advertised routes
-      ansible.builtin.command: "tailscale set --advertise-routes={{ tailscale_advertise_routes | join(',') }}"
+    # The name in the tailnet, which may differ from the hostname preference.
+    - name: Read the node status after joining
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_status_now
+      changed_when: false
+
+    - name: Read the help of tailscale set
+      ansible.builtin.command: tailscale set --help
+      register: tailscale_set_help
+      changed_when: false
+      failed_when: false
+
+    # Only the settings that differ are sent, in one call. Hostname and accept-dns
+    # are only managed when set; routes always are. Tags cannot be changed with
+    # tailscale set, only at join.
+    - name: Work out what differs
+      ansible.builtin.set_fact:
+        tailscale_set_flags: >-
+          {{ (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
+              if ((tailscale_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort)
+                 != (tailscale_advertise_routes | sort) else [])
+             + (['--hostname=' ~ tailscale_hostname]
+                if tailscale_hostname | length > 0
+                   and (tailscale_prefs.stdout | from_json).Hostname | default('', true) != tailscale_hostname
+                   and (tailscale_status_now.stdout | from_json).Self.DNSName.split('.')[0] != tailscale_hostname
+                else [])
+             + (['--accept-dns=' ~ (tailscale_accept_dns | bool | string | lower)]
+                if tailscale_accept_dns is not none
+                   and (tailscale_prefs.stdout | from_json).CorpDNS | default(true) != (tailscale_accept_dns | bool)
+                else []) }}
+
+    - name: Assert tailscale set knows these flags
+      ansible.builtin.assert:
+        that: item.split('=')[0] in tailscale_set_help.stdout ~ tailscale_set_help.stderr
+        fail_msg: "This Tailscale version has no tailscale set {{ item.split('=')[0] }}; upgrade it."
+        quiet: true
+      loop: "{{ tailscale_set_flags }}"
+
+    - name: Converge settings
+      ansible.builtin.command:
+        argv: "{{ ['tailscale', 'set'] + tailscale_set_flags }}"
       changed_when: true
-      when: >-
-        ((tailscale_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort)
-        != (tailscale_advertise_routes | sort)
+      when: tailscale_set_flags | length > 0
+
+    - name: Warn when the tags differ from the requested ones
+      ansible.builtin.debug:
+        msg: >-
+          The node has tags {{ (tailscale_prefs.stdout | from_json).AdvertiseTags | default([], true) }},
+          not {{ tailscale_advertise_tags }}. Tags can only be set at join: log the node
+          out (tailscale logout) and run this again with a key that carries them.
+      when:
+        - tailscale_advertise_tags | length > 0
+        - (tailscale_prefs.stdout | from_json).AdvertiseTags | default([], true) | sort != tailscale_advertise_tags | sort

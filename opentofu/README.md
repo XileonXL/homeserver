@@ -32,6 +32,10 @@ tofu plan
 
 The API token is read from `PROXMOX_VE_API_TOKEN` and is never a OpenTofu variable.
 
+The endpoint is always `https://pve:8006/` (the host's Tailscale name), so Tailscale
+must be running on the workstation. The provider sets `insecure = true` for the
+self-signed certificate, so the name not matching it does not fail TLS.
+
 ## State
 
 Local backend: one operator, no CI. `terraform.tfstate` can hold secrets in plaintext

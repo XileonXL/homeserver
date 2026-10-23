@@ -1,0 +1,73 @@
+---
+- name: Serve the local domain over the tailnet
+  when: tailnet_dns_domain | length > 0
+  block:
+    # dnsmasq-base is the binary only: no service, no /etc/dnsmasq.conf and no
+    # /etc/dnsmasq.d, so nothing can start with the packaged defaults.
+    - name: Install dnsmasq-base
+      ansible.builtin.apt:
+        name: dnsmasq-base
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Empty before the package or the login exist (check mode on a new host).
+    - name: Read the Tailscale address
+      ansible.builtin.command: tailscale ip -4
+      register: tailnet_dns_ip_result
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Assert the node has a Tailscale address
+      ansible.builtin.assert:
+        that: tailnet_dns_ip_result.stdout | trim | length > 0
+        fail_msg: >-
+          The node has no Tailscale address. Run the tailscale role first (it joins
+          the tailnet) and check that tailscaled is running.
+        quiet: true
+      when: not ansible_check_mode
+
+    - name: Check whether the unit exists
+      ansible.builtin.stat:
+        path: "{{ tailnet_dns_unit }}"
+      register: tailnet_dns_unit_stat
+
+    - name: Configure and run dnsmasq
+      when:
+        - tailnet_dns_ip_result.stdout | trim | length > 0
+        - not ansible_check_mode or tailnet_dns_unit_stat.stat.exists
+      vars:
+        tailnet_dns_ip: "{{ tailnet_dns_ip_result.stdout | trim }}"
+      block:
+        # The configuration is written before the service is ever started.
+        - name: Write the dnsmasq configuration
+          ansible.builtin.template:
+            src: dnsmasq-tailnet.conf.j2
+            dest: "{{ tailnet_dns_conf }}"
+            owner: root
+            group: root
+            mode: "0644"
+          notify: Restart dnsmasq-tailnet
+
+        # bind-dynamic lets dnsmasq start before tailscale0 has its address and bind
+        # it when it appears; the ordering and the restart policy cover the rest.
+        - name: Install the unit
+          ansible.builtin.template:
+            src: dnsmasq-tailnet.service.j2
+            dest: "{{ tailnet_dns_unit }}"
+            owner: root
+            group: root
+            mode: "0644"
+          notify:
+            - Reload systemd
+            - Restart dnsmasq-tailnet
+
+        - name: Apply the configuration before enabling the service
+          ansible.builtin.meta: flush_handlers
+
+        - name: Enable and start dnsmasq
+          ansible.builtin.service:
+            name: dnsmasq-tailnet
+            state: started
+            enabled: true

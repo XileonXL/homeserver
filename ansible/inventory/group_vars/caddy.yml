@@ -1,5 +1,13 @@
 ---
+# Joins the tailnet as a plain node (needs /dev/net/tun in the container) and
+# answers the local domain over it, so the names work away from home.
+tailscale_hostname: caddy
+tailscale_accept_dns: false
+tailscale_advertise_tags:
+  - tag:homeserver
+
 caddy_dashboard_name: homeserver.lan
+tailnet_dns_domain: "{{ caddy_dashboard_name }}"
 
 caddy_sites:
   - name: pve.homeserver.lan

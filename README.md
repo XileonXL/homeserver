@@ -12,7 +12,7 @@ you can change.
 | Service | Runs as | Default address | Purpose |
 |---|---|---|---|
 | Proxmox VE 9 | host | `192.168.1.50` | hypervisor |
-| Tailscale | on the host | | reach the whole LAN from anywhere |
+| Tailscale | host, Caddy | | reach the LAN and the `.lan` names from anywhere, even on a network that uses the same range |
 | Pi-hole | LXC | `192.168.1.60` | ad filtering and DNS for the LAN |
 | Home Assistant OS | VM | `192.168.1.62` | home automation |
 | Caddy | LXC | `192.168.1.64` | HTTPS reverse proxy, so services are reached by name with no ports |
@@ -123,6 +123,11 @@ The defaults assume a `192.168.1.0/24` LAN with the router at `192.168.1.1`.
 9. **Trust the local certificates.** Install `caddy-root.crt`, which step 6 leaves in
    the repository root, as a trusted root on your devices, then open
    `https://homeserver.lan`.
+
+Ansible and OpenTofu always reach the host by its Tailscale name (`pve`) and the
+containers through it, so Tailscale must be running on the workstation. See the
+[network plan](docs/02-network-plan.md#caddy-on-the-tailnet) for the
+Tailscale admin console steps.
 
 More detail in [ansible/](ansible/README.md) and [opentofu/](opentofu/README.md).
 

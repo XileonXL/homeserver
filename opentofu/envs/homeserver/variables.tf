@@ -1,7 +1,7 @@
 variable "proxmox_endpoint" {
   description = "Proxmox VE API endpoint URL"
   type        = string
-  default     = "https://192.168.1.50:8006/"
+  default     = "https://pve:8006/"
 }
 
 variable "ssh_public_key_path" {

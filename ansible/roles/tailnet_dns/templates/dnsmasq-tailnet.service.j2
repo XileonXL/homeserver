@@ -1,0 +1,12 @@
+[Unit]
+Description=dnsmasq for {{ tailnet_dns_domain }} on the tailnet
+After=tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file={{ tailnet_dns_conf }} --pid-file= --user=nobody
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

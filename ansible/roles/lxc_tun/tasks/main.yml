@@ -1,0 +1,6 @@
+---
+- name: Give containers access to /dev/net/tun
+  ansible.builtin.include_tasks: guest.yml
+  loop: "{{ lxc_tun_guest_ids }}"
+  loop_control:
+    loop_var: lxc_tun_guest_id

@@ -1,0 +1,5 @@
+---
+# Containers that get /dev/net/tun, as Proxmox guest IDs. Needed by a Tailscale
+# client running in a container (kernel networking). Only root@pam can set devices
+# on a container, so OpenTofu cannot; a guest that does not exist yet is skipped.
+lxc_tun_guest_ids: []

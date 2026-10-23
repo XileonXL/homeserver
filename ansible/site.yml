@@ -11,6 +11,7 @@
     - role: haos_network
     - role: alerts
     - role: media_disk
+    - role: lxc_tun
 
 # A fresh Debian LXC template may have no Python (or python3-apt), which
 # Ansible modules need. raw works without it. The facts gathered here are kept
@@ -47,6 +48,8 @@
   gather_facts: false
 
   roles:
+    - role: tailscale
+    - role: tailnet_dns
     - role: caddy
 
 - name: Configure the status page

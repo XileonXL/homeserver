@@ -2,6 +2,23 @@
 # CIDRs to advertise as a subnet router. Empty means a plain client.
 tailscale_advertise_routes: []
 
+# Name of the node in the tailnet (its MagicDNS name). Empty keeps whatever the node
+# has: the operating system hostname on a new node, the current name on a joined one.
+tailscale_hostname: ""
+
+# Tags requested for the node, for example tag:homeserver. Only applied when joining
+# and only when not empty; they must be allowed by the auth key and by tagOwners in
+# the tailnet policy. A joined node with other tags only gets a warning.
+tailscale_advertise_tags: []
+
+# Whether Tailscale takes over the node's DNS settings. Servers keep their own
+# resolver, so a new node joins with it off. Null leaves a joined node as it is;
+# true or false converges it.
+tailscale_accept_dns: ~
+
 # Only needed while the node is logged out. Read from the operator's
 # environment on the controller; never stored in the repository.
 tailscale_authkey: "{{ lookup('ansible.builtin.env', 'TAILSCALE_AUTHKEY') }}"
+
+# Where the key is written, briefly, while joining (a memory filesystem).
+tailscale_authkey_file: /run/tailscale-authkey

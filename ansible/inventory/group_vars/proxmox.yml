@@ -1,6 +1,9 @@
 ---
 proxmox_domain_name: homeserver.lan
 
+# Name in the tailnet; Ansible and OpenTofu reach the host by it.
+tailscale_hostname: pve
+
 # Subnet router: advertise the whole LAN. Route approval is done in the
 # Tailscale admin console.
 tailscale_advertise_routes:
@@ -12,3 +15,8 @@ haos_network_dns:
   - 192.168.1.60
 haos_network_trusted_proxies:
   - 192.168.1.64
+
+# Containers that run a Tailscale client (Caddy); the guest ID is in
+# opentofu/envs/homeserver/variables.tf.
+lxc_tun_guest_ids:
+  - 164

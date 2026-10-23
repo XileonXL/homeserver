@@ -43,7 +43,9 @@ docs/        install guide, network plan and decisions
 
 - LXC for light services, a VM for anything that needs its own kernel.
   Home Assistant OS is an appliance in a VM and is not managed by Ansible.
-- Tailscale runs on the Proxmox host as a subnet router, not as a client per guest.
+- Tailscale runs on the Proxmox host as a subnet router, plus on Caddy as a client for
+  remote `.lan` access (the home range can collide with foreign networks). No other guest
+  gets a client.
 - Never configure an unfiltered secondary DNS server next to Pi-hole. Resolvers use
   secondaries opportunistically, so filtering leaks. A secondary must filter too.
 - A full LVM thin pool corrupts guests. Anything that grows without bound, such as

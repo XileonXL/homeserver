@@ -1,0 +1,9 @@
+---
+# Domain answered over the tailnet: the apex and every subdomain resolve to this
+# node's Tailscale address. Empty makes the role do nothing.
+tailnet_dns_domain: ""
+
+# Own unit and configuration, so the packaged dnsmasq service and its configuration
+# (which listens on every address) never exist on the node.
+tailnet_dns_conf: /etc/dnsmasq-tailnet.conf
+tailnet_dns_unit: /etc/systemd/system/dnsmasq-tailnet.service

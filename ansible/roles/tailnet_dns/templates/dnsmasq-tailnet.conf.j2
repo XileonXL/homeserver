@@ -1,0 +1,10 @@
+# Managed by Ansible. Answers {{ tailnet_dns_domain }} on the Tailscale interface only.
+interface=tailscale0
+except-interface=lo
+bind-dynamic
+domain-needed
+bogus-priv
+no-resolv
+no-hosts
+local=/{{ tailnet_dns_domain }}/
+address=/{{ tailnet_dns_domain }}/{{ tailnet_dns_ip }}

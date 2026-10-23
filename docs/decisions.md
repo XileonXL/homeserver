@@ -49,6 +49,33 @@ as it filters too. See the [network plan](02-network-plan.md#dns).
 One install gives access to every guest, and it keeps working when the guests are
 down. See the [network plan](02-network-plan.md#remote-access-with-tailscale).
 
+## Tailscale also on Caddy, with its own tiny DNS for the local domain
+
+Foreign networks often use `192.168.1.0/24` too, so away from home the LAN addresses
+and the subnet route collide and the `.lan` names point at the wrong machine.
+Renumbering the home LAN would fix it only until a network with the new range turns up,
+and it touches every device and DHCP reservation. Instead Caddy, which every name
+resolves to, joins the tailnet with its own stable `100.x` address (a normal client
+with kernel networking; it needs `/dev/net/tun`, which only root@pam can set, so the
+`lxc_tun` role does it on the host, as it does for the media bind mount).
+
+Names must resolve to that address away from home. A dnsmasq on Caddy listens on the
+Tailscale address only and answers `homeserver.lan` and every subdomain with it;
+Tailscale split DNS sends just that domain to it. Pi-hole is untouched and stays the
+LAN resolver. Names and Caddy's certificates do not change.
+
+Having Pi-hole answer both ways (dnsmasq `localise-queries`) does not work: it picks the
+address on the same subnet as the receiving interface, and `tailscale0` is a `/32`, so
+nothing matches. Everything else stays off the tailnet: it is reached through Caddy, or
+by SSH through the Proxmox host. Ansible and OpenTofu always go over Tailscale, at home
+too: they do not auto-detect, because a foreign network that overlaps `192.168.1.x` makes
+a reachability check unreliable, and one path is simpler to keep working. Servers do not
+accept Tailscale DNS.
+
+The first SSH connection to `pve` trusts its host key (`accept-new`) instead of a pinned
+entry: reaching it first requires being on the tailnet, which WireGuard authenticates, and
+a pinned key in the repository would be one more value to maintain.
+
 ## Bulk data on a separate disk
 
 A full LVM thin pool corrupts guests instead of just refusing writes. Anything that

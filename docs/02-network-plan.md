@@ -93,8 +93,8 @@ machine behind it.
 
 ## Remote access with Tailscale
 
-Tailscale runs on the **Proxmox host only**, as a subnet router that advertises the
-whole LAN. Guests need no client.
+Tailscale runs on the **Proxmox host** as a subnet router that advertises the whole
+LAN. Guests need no client, except Caddy (below).
 
 - In a container it would need nesting and `/dev/net/tun`.
 - The host stays reachable when guests are down, which is when remote access matters.
@@ -122,6 +122,39 @@ them a filtering secondary instead.
 
 Clients that arrive through the subnet router are source-NATed to the host's address,
 so Pi-hole sees them as local and its `LOCAL` listening mode is enough.
+
+### Caddy on the tailnet
+
+Foreign networks often use the same `192.168.1.0/24`, so away from home the LAN
+addresses are unreachable or wrong. Caddy therefore also joins the tailnet (a client in
+the container, with `/dev/net/tun`) and gets the MagicDNS name `caddy` and a stable
+`100.x` address.
+
+A small dnsmasq on Caddy listens on that address only and answers `homeserver.lan` and
+all its subdomains with it. Tailscale split DNS sends that domain to it, so the names
+work with the same certificates. Pi-hole is not involved and keeps serving the LAN.
+
+Read the address with `tailscale ip -4` inside the container.
+
+Manual steps in the Tailscale admin console:
+
+1. Create a reusable, pre-authorized auth key tagged `tag:homeserver`, and allow the tag
+   under `tagOwners` in the access controls. Put the key in `.env`.
+2. DNS, Add nameserver, Custom: Caddy's Tailscale address, "Restrict to domain"
+   `homeserver.lan`.
+3. On the laptop, enable "Use Tailscale DNS settings".
+4. Restrict the tag in the access controls: only your devices, only HTTPS and DNS, and
+   nothing outbound from the tag. SSH to Caddy goes through `pve`, not its tailnet address.
+
+   ```json
+   "tagOwners": {"tag:homeserver": ["autogroup:admin"]},
+   "acls": [
+     {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:homeserver:443,53"]}
+   ]
+   ```
+
+   Do not add a rule with the tag as `src`. The Proxmox host joins with an untagged key
+   so it keeps normal access for your devices.
 
 ## Monitoring
 

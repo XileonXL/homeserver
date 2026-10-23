@@ -1,0 +1,66 @@
+---
+- name: Read the container configuration
+  ansible.builtin.command:
+    argv:
+      - pct
+      - config
+      - "{{ lxc_tun_guest_id }}"
+  register: lxc_tun_config
+  changed_when: false
+  failed_when: lxc_tun_config.rc != 0 and 'does not exist' not in lxc_tun_config.stderr
+  check_mode: false
+
+- name: Skip the container while it does not exist
+  ansible.builtin.debug:
+    msg: >-
+      Container {{ lxc_tun_guest_id }} does not exist yet. Create it, then run this
+      play again.
+  when: lxc_tun_config.rc != 0
+
+- name: Add /dev/net/tun
+  when:
+    - lxc_tun_config.rc == 0
+    - lxc_tun_config.stdout | regex_search('(?m)^dev\d+: (path=)?/dev/net/tun(,|$)') is none
+  vars:
+    lxc_tun_used: "{{ lxc_tun_config.stdout | regex_findall('(?m)^dev(\\d+):') | map('int') | list }}"
+    lxc_tun_slot: "dev{{ range(256) | reject('in', lxc_tun_used) | first }}"
+  block:
+    - name: Read the container status
+      ansible.builtin.command:
+        argv:
+          - pct
+          - status
+          - "{{ lxc_tun_guest_id }}"
+      register: lxc_tun_status
+      changed_when: false
+      check_mode: false
+
+    # Commands do not run in check mode; this reports the change instead.
+    - name: Report that the device would be added
+      ansible.builtin.debug:
+        msg: "Would add /dev/net/tun to container {{ lxc_tun_guest_id }} as {{ lxc_tun_slot }}."
+      changed_when: true
+      when: ansible_check_mode
+
+    - name: Set the device
+      ansible.builtin.command:
+        argv:
+          - pct
+          - set
+          - "{{ lxc_tun_guest_id }}"
+          - "--{{ lxc_tun_slot }}"
+          - path=/dev/net/tun
+      changed_when: true
+      register: lxc_tun_set
+
+    # A device is not hot-plugged: it appears at the next start.
+    - name: Reboot the container to apply it
+      ansible.builtin.command:
+        argv:
+          - pct
+          - reboot
+          - "{{ lxc_tun_guest_id }}"
+      changed_when: true
+      when:
+        - lxc_tun_set is changed
+        - lxc_tun_status.stdout | trim == 'status: running'
