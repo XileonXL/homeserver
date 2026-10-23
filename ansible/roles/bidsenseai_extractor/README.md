@@ -7,8 +7,8 @@ Runs `doc-extractor run --pending` from the private BidSense AI repository every
 02:30 Europe/Madrid, as the `extractor` user, with a Claude Code subscription token and AWS
 credentials from IAM Roles Anywhere (`aws_signing_helper` as `credential_process`).
 
-- Repository: checked out over SSH with a read-only deploy key at a pinned ref
-  (`bidsenseai_extractor_repo_ref`, a commit SHA or tag; it must be pushed).
+- Repository: checked out over SSH with a read-only deploy key, tracking `main`
+  (`bidsenseai_extractor_repo_ref`). Re-run the play to deploy the latest pushed `main`.
 - Tools at pinned versions with checksums: uv, Claude Code, `aws_signing_helper`.
 - Configuration in `/etc/bidsenseai-extractor/` (`env`, `alerts.env`, certificate and key).
 - A failed run sends a Telegram message through `OnFailure`. `TELEGRAM_BOT_TOKEN` and

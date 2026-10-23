@@ -3,10 +3,10 @@ bidsenseai_extractor_user: extractor
 bidsenseai_extractor_home: /var/lib/extractor
 bidsenseai_extractor_config_dir: /etc/bidsenseai-extractor
 
-# Private repository, read over SSH with a read-only deploy key. The ref is a commit
-# SHA or a tag; bump it to deploy a new version.
+# Private repository, read over SSH with a read-only deploy key. Tracks main: each run of
+# the play deploys the latest pushed main.
 bidsenseai_extractor_repo_url: git@github.com:XileonXL/bidsenseai.git
-bidsenseai_extractor_repo_ref: 6b2db5e6e0c1f7b2f0bb71e3da440df2138eaaf9
+bidsenseai_extractor_repo_ref: main
 bidsenseai_extractor_repo_dir: "{{ bidsenseai_extractor_home }}/bidsenseai"
 
 # Local path on the controller of the deploy key's private half (see .env.example).
