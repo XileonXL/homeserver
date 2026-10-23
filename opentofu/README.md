@@ -32,7 +32,8 @@ tofu plan
 
 The API token is read from `PROXMOX_VE_API_TOKEN` and is never a OpenTofu variable.
 
-The endpoint is always `https://pve:8006/` (the host's Tailscale name), so Tailscale
+The endpoint is always `https://pve.tail640776.ts.net:8006/` (the host's full Tailscale name; the macOS
+Tailscale daemon does not resolve the short name), so Tailscale
 must be running on the workstation. The provider sets `insecure = true` for the
 self-signed certificate, so the name not matching it does not fail TLS.
 
