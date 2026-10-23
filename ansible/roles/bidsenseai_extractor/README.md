@@ -1,5 +1,8 @@
 # bidsenseai_extractor
 
+Temporary: not part of the house and to be removed; see
+[docs/decisions.md](../../../docs/decisions.md#a-temporary-bidsense-ai-extractor-outside-the-house).
+
 Runs `doc-extractor run --pending` from the private BidSense AI repository every night at
 02:30 Europe/Madrid, as the `extractor` user, with a Claude Code subscription token and AWS
 credentials from IAM Roles Anywhere (`aws_signing_helper` as `credential_process`).

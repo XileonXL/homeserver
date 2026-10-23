@@ -110,11 +110,17 @@ and cores. `started = false` keeps the VM and its disk, and its name, proxy site
 status check are removed so nothing links to or alerts on a guest that is off. Set
 `started = true` and restore those three entries when the first device arrives.
 
-## A BidSense AI extractor outside the house
+## A temporary BidSense AI extractor outside the house
 
 `bidsenseai-extractor` (vm_id 180, `192.168.1.80`) runs the nightly document extraction of
 another project. It is not a service of the house, so it stays out of the consecutive
 numbering of the others and is not published by the proxy, the DNS or the status page.
+
+It is temporary and does not belong in this repository long term. To remove it, delete its
+entry in `opentofu/envs/homeserver/variables.tf`, its group in `ansible/inventory/hosts.yml`,
+its play in `ansible/site.yml`, the `bidsenseai_extractor` role, the `EXTRACTOR_*` and
+`CLAUDE_CODE_OAUTH_TOKEN` variables in `.env.example` and `ansible/README.md`, its row in
+the root `README.md` and this section.
 
 It uses a Claude Code subscription (`EXTRACTOR_PROVIDER=claude-code`) instead of the API
 because the volume is small and a flat subscription costs less than per-token billing.
