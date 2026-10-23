@@ -149,14 +149,14 @@ Manual steps in the Tailscale admin console:
 
    ```json
    "tagOwners": {"tag:homeserver": ["autogroup:admin"]},
-   "acls": [
-     {"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
-     {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:homeserver:80,443,53"]},
-     {"action": "accept", "src": ["autogroup:member"], "dst": ["192.168.1.0/24:*"]}
+   "grants": [
+     {"src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"]},
+     {"src": ["autogroup:member"], "dst": ["tag:homeserver"], "ip": ["tcp:80", "tcp:443", "tcp:53", "udp:53"]},
+     {"src": ["autogroup:member"], "dst": ["192.168.1.0/24"], "ip": ["*"]}
    ]
    ```
 
-   Do not add a rule with the tag as `src`. The Proxmox host joins with an untagged key
+   These replace the default allow-all grant. Do not add a rule with the tag as `src`. The Proxmox host joins with an untagged key
    so it keeps normal access for your devices.
 
 ## Monitoring
