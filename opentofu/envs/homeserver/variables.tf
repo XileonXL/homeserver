@@ -80,6 +80,15 @@ variable "containers" {
       # the indexers search.
       dns = ["192.168.1.60"]
     }
+    # Not part of the house: outside the consecutive numbering on purpose.
+    bidsenseai-extractor = {
+      vm_id  = 180
+      ip     = "192.168.1.80"
+      cores  = 2
+      memory = 2048
+      swap   = 1024
+      disk   = 16
+    }
   }
 }
 

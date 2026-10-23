@@ -1,0 +1,261 @@
+---
+- name: Fail without the secrets and files from .env
+  ansible.builtin.assert:
+    that:
+      - bidsenseai_extractor_deploy_key_file | length > 0
+      - bidsenseai_extractor_cert_file | length > 0
+      - bidsenseai_extractor_key_file | length > 0
+      - bidsenseai_extractor_trust_anchor_arn | length > 0
+      - bidsenseai_extractor_profile_arn | length > 0
+      - bidsenseai_extractor_role_arn | length > 0
+      - bidsenseai_extractor_db_cluster_arn | length > 0
+      - bidsenseai_extractor_db_secret_arn | length > 0
+      - bidsenseai_extractor_db_name | length > 0
+      - bidsenseai_extractor_documents_bucket | length > 0
+      - bidsenseai_extractor_oauth_token | length > 0
+      - bidsenseai_extractor_telegram_bot_token | length > 0
+      - bidsenseai_extractor_telegram_chat_id | length > 0
+    fail_msg: >-
+      An EXTRACTOR_* variable, CLAUDE_CODE_OAUTH_TOKEN, TELEGRAM_BOT_TOKEN or
+      TELEGRAM_CHAT_ID is empty. Fill in .env (see .env.example) and load it.
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Install packages
+  ansible.builtin.apt:
+    name:
+      - acl
+      - ca-certificates
+      - curl
+      - git
+      - openssh-client
+      - sudo
+      - tzdata
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the extractor system user
+  ansible.builtin.user:
+    name: "{{ bidsenseai_extractor_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ bidsenseai_extractor_home }}"
+    create_home: true
+  register: bidsenseai_extractor_user_result
+
+- name: Create the program directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/uv/{{ bidsenseai_extractor_uv_version }}
+    - /opt/claude/{{ bidsenseai_extractor_claude_version }}
+
+- name: Download uv
+  ansible.builtin.get_url:
+    url: "https://github.com/astral-sh/uv/releases/download/{{ bidsenseai_extractor_uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+    dest: /opt/uv/{{ bidsenseai_extractor_uv_version }}.tar.gz
+    checksum: "sha256:{{ bidsenseai_extractor_uv_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# The archive has one top-level directory, which is stripped.
+- name: Unpack uv
+  ansible.builtin.unarchive:
+    src: /opt/uv/{{ bidsenseai_extractor_uv_version }}.tar.gz
+    dest: /opt/uv/{{ bidsenseai_extractor_uv_version }}
+    remote_src: true
+    owner: root
+    group: root
+    extra_opts:
+      - --strip-components=1
+    creates: /opt/uv/{{ bidsenseai_extractor_uv_version }}/uv
+  when: not ansible_check_mode
+
+- name: Link uv into the path
+  ansible.builtin.file:
+    src: /opt/uv/{{ bidsenseai_extractor_uv_version }}/uv
+    dest: /usr/local/bin/uv
+    state: link
+
+- name: Download Claude Code
+  ansible.builtin.get_url:
+    url: "https://downloads.claude.ai/claude-code-releases/{{ bidsenseai_extractor_claude_version }}/linux-x64/claude"
+    dest: /opt/claude/{{ bidsenseai_extractor_claude_version }}/claude
+    checksum: "sha256:{{ bidsenseai_extractor_claude_checksum }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Link Claude Code into the path
+  ansible.builtin.file:
+    src: /opt/claude/{{ bidsenseai_extractor_claude_version }}/claude
+    dest: /usr/local/bin/claude
+    state: link
+
+- name: Install aws_signing_helper
+  ansible.builtin.get_url:
+    url: "https://rolesanywhere.amazonaws.com/releases/{{ bidsenseai_extractor_signing_helper_version }}/X86_64/Linux/Amzn2023/aws_signing_helper"
+    dest: /usr/local/bin/aws_signing_helper
+    checksum: "sha256:{{ bidsenseai_extractor_signing_helper_checksum }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: "{{ bidsenseai_extractor_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the alert credentials
+  ansible.builtin.template:
+    src: alerts.env.j2
+    dest: "{{ bidsenseai_extractor_config_dir }}/alerts.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install the alert script
+  ansible.builtin.copy:
+    src: bidsenseai-extractor-alert
+    dest: /usr/local/sbin/bidsenseai-extractor-alert
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ bidsenseai_extractor_config_dir }}/env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+# The user does not exist in check mode on a fresh host, so everything that
+# names it as an owner is skipped there.
+- name: Set up the extractor user's files, repository and environment
+  when: not (ansible_check_mode and bidsenseai_extractor_user_result is changed)
+  block:
+    - name: Deploy the certificate and key
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ bidsenseai_extractor_config_dir }}/{{ item.dest }}"
+        owner: "{{ bidsenseai_extractor_user }}"
+        group: "{{ bidsenseai_extractor_user }}"
+        mode: "0600"
+      loop:
+        - { src: "{{ bidsenseai_extractor_cert_file }}", dest: extractor.pem }
+        - { src: "{{ bidsenseai_extractor_key_file }}", dest: extractor.key }
+      loop_control:
+        label: "{{ item.dest }}"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Create the user's directories
+      ansible.builtin.file:
+        path: "{{ bidsenseai_extractor_home }}/{{ item.path }}"
+        state: directory
+        owner: "{{ bidsenseai_extractor_user }}"
+        group: "{{ bidsenseai_extractor_user }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: .ssh, mode: "0700" }
+        - { path: .aws, mode: "0700" }
+        - { path: .cache, mode: "0700" }
+
+    - name: Deploy the GitHub deploy key
+      ansible.builtin.copy:
+        src: "{{ bidsenseai_extractor_deploy_key_file }}"
+        dest: "{{ bidsenseai_extractor_home }}/.ssh/deploy_key"
+        owner: "{{ bidsenseai_extractor_user }}"
+        group: "{{ bidsenseai_extractor_user }}"
+        mode: "0600"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Pin the GitHub host key
+      ansible.builtin.copy:
+        content: "{{ bidsenseai_extractor_github_host_key | trim }}\n"
+        dest: "{{ bidsenseai_extractor_home }}/.ssh/known_hosts"
+        owner: "{{ bidsenseai_extractor_user }}"
+        group: "{{ bidsenseai_extractor_user }}"
+        mode: "0644"
+
+    - name: Write the AWS profile
+      ansible.builtin.template:
+        src: aws-config.j2
+        dest: "{{ bidsenseai_extractor_home }}/.aws/config"
+        owner: "{{ bidsenseai_extractor_user }}"
+        group: "{{ bidsenseai_extractor_user }}"
+        mode: "0600"
+
+    - name: Check out the repository
+      ansible.builtin.git:
+        repo: "{{ bidsenseai_extractor_repo_url }}"
+        dest: "{{ bidsenseai_extractor_repo_dir }}"
+        version: "{{ bidsenseai_extractor_repo_ref }}"
+        key_file: "{{ bidsenseai_extractor_home }}/.ssh/deploy_key"
+        ssh_opts: >-
+          -o BatchMode=yes
+          -o StrictHostKeyChecking=yes
+          -o UserKnownHostsFile={{ bidsenseai_extractor_home }}/.ssh/known_hosts
+          -o IdentitiesOnly=yes
+      become: true
+      become_user: "{{ bidsenseai_extractor_user }}"
+
+    # uv reports "Installed" or "Uninstalled" only when the environment changes.
+    - name: Install the doc-extractor dependencies
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/uv
+          - sync
+          - --frozen
+          - --no-dev
+          - --python
+          - "{{ bidsenseai_extractor_python_version }}"
+          - --package
+          - doc-extractor
+      args:
+        chdir: "{{ bidsenseai_extractor_repo_dir }}"
+      environment:
+        HOME: "{{ bidsenseai_extractor_home }}"
+      become: true
+      become_user: "{{ bidsenseai_extractor_user }}"
+      register: bidsenseai_extractor_sync
+      changed_when: "'Installed' in bidsenseai_extractor_sync.stderr or 'Uninstalled' in bidsenseai_extractor_sync.stderr"
+
+    - name: Install the systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - bidsenseai-extractor.service
+        - bidsenseai-extractor.timer
+        - bidsenseai-extractor-alert.service
+      notify:
+        - Reload systemd
+        - Restart extractor timer
+
+    - name: Load the new units
+      ansible.builtin.meta: flush_handlers
+
+    # The units do not exist in check mode on a host that never had them.
+    - name: Enable and start the timer
+      ansible.builtin.systemd:
+        name: bidsenseai-extractor.timer
+        state: started
+        enabled: true
+      when: not ansible_check_mode

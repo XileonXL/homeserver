@@ -109,3 +109,18 @@ There is nothing in the house for it to control yet, so the VM would only hold m
 and cores. `started = false` keeps the VM and its disk, and its name, proxy site and
 status check are removed so nothing links to or alerts on a guest that is off. Set
 `started = true` and restore those three entries when the first device arrives.
+
+## A BidSense AI extractor outside the house
+
+`bidsenseai-extractor` (vm_id 180, `192.168.1.80`) runs the nightly document extraction of
+another project. It is not a service of the house, so it stays out of the consecutive
+numbering of the others and is not published by the proxy, the DNS or the status page.
+
+It uses a Claude Code subscription (`EXTRACTOR_PROVIDER=claude-code`) instead of the API
+because the volume is small and a flat subscription costs less than per-token billing.
+Migrating is `EXTRACTOR_PROVIDER=anthropic` plus an API key, or the Lambda schedule in the
+BidSense AI `infra/`; documents already extracted are not extracted again.
+
+AWS access uses IAM Roles Anywhere with a certificate from a self-managed CA, so no
+long-lived access key lives on the machine. Credentials last an hour and the certificate
+alone can be revoked.

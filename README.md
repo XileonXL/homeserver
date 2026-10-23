@@ -18,6 +18,7 @@ you can change.
 | Caddy | LXC | `192.168.1.64` | HTTPS reverse proxy, so services are reached by name with no ports |
 | Gatus | LXC | `192.168.1.61` | status page and service checks, with alerts through Telegram |
 | Jellyfin, qBittorrent, Prowlarr | LXC | `192.168.1.63` | media library on a dedicated disk, a torrent client that downloads onto it, and a search front end for it |
+| BidSense AI extractor | LXC | `192.168.1.80` | nightly document extraction for another project; not part of the house, so outside the numbering |
 
 The host also sends its own alerts to Telegram: Proxmox notifications and a warning
 before the guest storage fills up.

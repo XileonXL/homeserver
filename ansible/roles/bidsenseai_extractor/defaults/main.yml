@@ -1,0 +1,60 @@
+---
+bidsenseai_extractor_user: extractor
+bidsenseai_extractor_home: /var/lib/extractor
+bidsenseai_extractor_config_dir: /etc/bidsenseai-extractor
+
+# Private repository, read over SSH with a read-only deploy key. The ref is a commit
+# SHA or a tag; bump it to deploy a new version.
+bidsenseai_extractor_repo_url: git@github.com:XileonXL/bidsenseai.git
+bidsenseai_extractor_repo_ref: 6b2db5e6e0c1f7b2f0bb71e3da440df2138eaaf9
+bidsenseai_extractor_repo_dir: "{{ bidsenseai_extractor_home }}/bidsenseai"
+
+# Local path on the controller of the deploy key's private half (see .env.example).
+bidsenseai_extractor_deploy_key_file: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DEPLOY_KEY_FILE') }}"
+# Pinned GitHub host key (https://api.github.com/meta, ssh_keys).
+bidsenseai_extractor_github_host_key: >-
+  github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+
+# Pinned tools, x86_64 Linux. Checksums are sha256.
+bidsenseai_extractor_uv_version: 0.13.5
+bidsenseai_extractor_uv_checksum: f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f
+bidsenseai_extractor_python_version: "3.12"
+
+bidsenseai_extractor_claude_version: 2.1.308
+bidsenseai_extractor_claude_checksum: 356733f185fa988e6bf3aa9a555269fdd167982a2e2a80d3c8a78037bb92ad58
+
+bidsenseai_extractor_signing_helper_version: 1.8.5
+bidsenseai_extractor_signing_helper_checksum: beec9ed1c492d93db809890f16713e3556353294b823c2184ad4e891f1b2b54d
+
+# Local paths on the controller of the end-entity certificate and key (see .env.example).
+bidsenseai_extractor_cert_file: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_CERT_FILE') }}"
+bidsenseai_extractor_key_file: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_KEY_FILE') }}"
+
+# IAM Roles Anywhere ARNs, from `tofu output` in the BidSense AI infra/ directory.
+bidsenseai_extractor_trust_anchor_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_TRUST_ANCHOR_ARN') }}"
+bidsenseai_extractor_profile_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_PROFILE_ARN') }}"
+bidsenseai_extractor_role_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_ROLE_ARN') }}"
+
+bidsenseai_extractor_aws_profile: bidsenseai-extractor
+bidsenseai_extractor_aws_region: eu-north-1
+
+# Database and bucket, from `tofu output` in the BidSense AI infra/ directory.
+bidsenseai_extractor_db_cluster_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DB_CLUSTER_ARN') }}"
+bidsenseai_extractor_db_secret_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DB_SECRET_ARN') }}"
+bidsenseai_extractor_db_name: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DB_NAME') }}"
+bidsenseai_extractor_documents_bucket: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DOCUMENTS_BUCKET') }}"
+bidsenseai_extractor_oauth_token: "{{ lookup('ansible.builtin.env', 'CLAUDE_CODE_OAUTH_TOKEN') }}"
+
+bidsenseai_extractor_provider: claude-code
+bidsenseai_extractor_doc_types: charges_certificate
+bidsenseai_extractor_provinces: "28"
+
+# Documents per run.
+bidsenseai_extractor_limit: 10
+bidsenseai_extractor_timer_calendar: "*-*-* 02:30:00 Europe/Madrid"
+# Upper bound for one run; each document may take up to 900 s.
+bidsenseai_extractor_timeout: 3h
+
+# Failure alerts reuse the bot of the alerts role.
+bidsenseai_extractor_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
+bidsenseai_extractor_telegram_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"

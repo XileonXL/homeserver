@@ -21,6 +21,7 @@ appliance and is not managed here.
 | `flaresolverr` | `media` | Installs FlareSolverr from the release tarball, for indexers behind a browser challenge |
 | `jackett` | `media` | Installs Jackett from the release tarball, for sites Prowlarr has no definition for |
 | `prowlarr` | `media` | Installs Prowlarr from the release tarball, as a search front end for qBittorrent |
+| `bidsenseai_extractor` | `bidsenseai_extractor` | Runs the BidSense AI `doc-extractor` nightly with a Claude Code subscription and IAM Roles Anywhere; see its [README](roles/bidsenseai_extractor/README.md) |
 
 Hosts and addresses are in `inventory/hosts.yml`; per-group settings in
 `inventory/group_vars/`.
@@ -53,6 +54,11 @@ set -a; source ../.env; set +a
 | `HEARTBEAT_URL` | you | optional; enables the heartbeat to an external watchdog |
 | `MEDIA_DISK` | you | by the `media_disk` role; the `/dev/disk/by-id/` path of the media disk |
 | `QBITTORRENT_PASSWORD` | you | on the first qBittorrent install, or to change the password |
+| `EXTRACTOR_DEPLOY_KEY_FILE` | you | by `bidsenseai_extractor`; local path of the read-only GitHub deploy key |
+| `EXTRACTOR_CERT_FILE`, `EXTRACTOR_KEY_FILE` | you | by `bidsenseai_extractor`; local paths of the Roles Anywhere certificate and key |
+| `EXTRACTOR_TRUST_ANCHOR_ARN`, `EXTRACTOR_PROFILE_ARN`, `EXTRACTOR_ROLE_ARN` | you | by `bidsenseai_extractor`; Roles Anywhere ARNs from `tofu output` |
+| `EXTRACTOR_DB_CLUSTER_ARN`, `EXTRACTOR_DB_SECRET_ARN`, `EXTRACTOR_DB_NAME`, `EXTRACTOR_DOCUMENTS_BUCKET` | you | by `bidsenseai_extractor`; database and bucket from `tofu output` |
+| `CLAUDE_CODE_OAUTH_TOKEN` | you | by `bidsenseai_extractor`; output of `claude setup-token` |
 
 ## Run
 

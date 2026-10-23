@@ -1,0 +1,11 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+# Skipped in check mode: the timer unit does not exist yet on a fresh host.
+- name: Restart extractor timer
+  ansible.builtin.systemd:
+    name: bidsenseai-extractor.timer
+    state: restarted
+  when: not ansible_check_mode

@@ -1,0 +1,4 @@
+# {{ ansible_managed }}
+[profile {{ bidsenseai_extractor_aws_profile }}]
+region = {{ bidsenseai_extractor_aws_region }}
+credential_process = /usr/local/bin/aws_signing_helper credential-process --certificate {{ bidsenseai_extractor_config_dir }}/extractor.pem --private-key {{ bidsenseai_extractor_config_dir }}/extractor.key --trust-anchor-arn {{ bidsenseai_extractor_trust_anchor_arn }} --profile-arn {{ bidsenseai_extractor_profile_arn }} --role-arn {{ bidsenseai_extractor_role_arn }}

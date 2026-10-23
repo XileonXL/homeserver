@@ -1,0 +1,31 @@
+# {{ ansible_managed }}
+[Unit]
+Description=BidSense AI document extraction
+Wants=network-online.target
+After=network-online.target
+OnFailure=bidsenseai-extractor-alert.service
+
+[Service]
+Type=oneshot
+User={{ bidsenseai_extractor_user }}
+Group={{ bidsenseai_extractor_user }}
+Environment=HOME={{ bidsenseai_extractor_home }}
+EnvironmentFile={{ bidsenseai_extractor_config_dir }}/env
+WorkingDirectory={{ bidsenseai_extractor_repo_dir }}
+ExecStart=/usr/local/bin/uv run --frozen --no-sync --package doc-extractor doc-extractor run --pending --limit {{ bidsenseai_extractor_limit }}
+TimeoutStartSec={{ bidsenseai_extractor_timeout }}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths={{ bidsenseai_extractor_home }}/.cache
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+UMask=0077
+CapabilityBoundingSet=

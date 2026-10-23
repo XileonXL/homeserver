@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Send a Telegram alert when the document extraction fails
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile={{ bidsenseai_extractor_config_dir }}/alerts.env
+ExecStart=/usr/local/sbin/bidsenseai-extractor-alert
