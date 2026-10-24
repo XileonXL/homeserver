@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Update the HireSignal AI repository and restart the bot
+Wants=network-online.target
+After=network-online.target
+OnFailure=hiresignalai-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hiresignalai-update
+TimeoutStartSec={{ hiresignalai_update_timeout }}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths={{ hiresignalai_home }}
+ReadOnlyPaths={{ hiresignalai_home }}/.ssh {{ hiresignalai_home }}/.gitconfig
+ProtectKernelTunables=true
+ProtectControlGroups=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID

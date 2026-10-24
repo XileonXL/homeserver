@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Update the HireSignal AI repository from origin and restart the bot when HEAD changed.
+# Runs as root: git and uv run as the service user (setpriv), the restart needs root. Used by the
+# daily hiresignalai-update.timer and by the Ansible deploy. The last line of the output is
+# "HEAD <before> <after>".
+set -euo pipefail
+
+readonly SERVICE_USER="{{ hiresignalai_user }}"
+readonly SERVICE_HOME="{{ hiresignalai_home }}"
+readonly REPO_DIR="{{ hiresignalai_repo_dir }}"
+readonly REPO_REF="{{ hiresignalai_repo_ref }}"
+readonly PYTHON_VERSION="{{ hiresignalai_python_version }}"
+readonly DAILY_UNIT="hiresignalai-daily.service"
+readonly BOT_UNIT="hiresignalai-bot.service"
+readonly LOCK_WAIT="1800"
+
+# Runs as the service user under the app's lock. Fast-forwards when it can, otherwise merges (the
+# service's local data commits are never rewritten). Fails on a dirty tree or a merge conflict (the
+# merge is aborted, which restores the previous state); it never rebases, resets or forces.
+# Prints "<HEAD before> <HEAD after>" as its last line.
+# shellcheck disable=SC2016
+readonly LOCKED_STEP='
+ref="$1"
+python="$2"
+before="$(git rev-parse HEAD)"
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "The working tree has uncommitted changes; refusing to update" >&2
+  exit 1
+fi
+git fetch --quiet origin "${ref}"
+if ! git merge --quiet --ff-only "origin/${ref}" 2>/dev/null \
+  && ! git merge --quiet --no-edit "origin/${ref}"; then
+  git merge --abort || true
+  echo "Merging origin/${ref} failed; the tree was left as before" >&2
+  exit 1
+fi
+after="$(git rev-parse HEAD)"
+echo "Syncing dependencies" >&2
+uv sync --locked --no-dev --python "${python}" >&2
+echo "${before} ${after}"
+'
+
+main() {
+  if systemctl is-active --quiet "${DAILY_UNIT}"; then
+    printf '%s: %s is running; refusing to update under it\n' "${0##*/}" "${DAILY_UNIT}" >&2
+    return 1
+  fi
+
+  local result before after
+  result="$(
+    setpriv --reuid "${SERVICE_USER}" --regid "${SERVICE_USER}" --init-groups -- \
+      env HOME="${SERVICE_HOME}" \
+      flock --wait "${LOCK_WAIT}" "${REPO_DIR}/data/.jobs.lock" \
+      /bin/bash -euc "${LOCKED_STEP}" _ "${REPO_REF}" "${PYTHON_VERSION}" \
+      | tail -n 1
+  )"
+  read -r before after <<<"${result}"
+  [[ -n "${before}" && -n "${after}" ]] || {
+    printf '%s: could not read the HEAD before and after\n' "${0##*/}" >&2
+    return 1
+  }
+
+  if [[ "${before}" != "${after}" ]]; then
+    printf 'Old HEAD: %s\nNew HEAD: %s\n' "${before}" "${after}"
+    if systemctl cat "${BOT_UNIT}" >/dev/null 2>&1; then
+      systemctl restart "${BOT_UNIT}"
+    fi
+  else
+    printf 'Already up to date at %s\n' "${after}"
+  fi
+  printf 'HEAD %s %s\n' "${before}" "${after}"
+}
+
+main "$@"

@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Update the HireSignal AI repository
+
+[Timer]
+OnCalendar={{ hiresignalai_update_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

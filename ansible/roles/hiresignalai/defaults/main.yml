@@ -43,6 +43,11 @@ hiresignalai_daily_calendar: "*-*-* 08:00:00 Europe/Madrid"
 # Upper bound for one daily run.
 hiresignalai_daily_timeout: 2h
 
+# Daily self-update from main, before the daily run.
+hiresignalai_update_calendar: "*-*-* 07:45:00 Europe/Madrid"
+# Upper bound for one update (lock wait is up to 30 min, plus fetch and uv sync).
+hiresignalai_update_timeout: 1h
+
 # Failure alerts reuse the bot of the alerts role.
 hiresignalai_alert_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
 hiresignalai_alert_telegram_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"

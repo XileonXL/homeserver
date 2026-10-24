@@ -147,6 +147,14 @@
     group: root
     mode: "0755"
 
+- name: Install the update script
+  ansible.builtin.template:
+    src: hiresignalai-update.j2
+    dest: /usr/local/sbin/hiresignalai-update
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Write the environment file
   ansible.builtin.template:
     src: env.j2
@@ -230,85 +238,13 @@
           never deploys under a running daily.
         quiet: true
 
-    - name: Query the bot service
-      ansible.builtin.systemd:
-        name: hiresignalai-bot.service
-      register: hiresignalai_bot_status
-
-    # Deploy window: the bot is stopped (it handles SIGTERM gracefully) so it is not killed
-    # mid-git or mid-sync, and is always started again afterwards, even if the deploy fails.
-    - name: Deploy the code with the bot stopped
+    # The script updates the repository and syncs the dependencies as the service user under the
+    # app's lock, and restarts the bot when HEAD changed. Its last line is "HEAD <before> <after>".
+    - name: Update the repository and restart the bot
+      ansible.builtin.command: /usr/local/sbin/hiresignalai-update
+      register: hiresignalai_update
+      changed_when: (hiresignalai_update.stdout_lines | last).split()[1] != (hiresignalai_update.stdout_lines | last).split()[2]
       when: not ansible_check_mode
-      block:
-        - name: Stop the bot
-          ansible.builtin.systemd:
-            name: hiresignalai-bot.service
-            state: stopped
-          when: hiresignalai_bot_status.status.LoadState | default('not-found') == 'loaded'
-
-        # Under the app's own lock. Fast-forwards when it can, otherwise merges (the service's
-        # local data commits are never rewritten). Fails on a dirty tree or a merge conflict
-        # (the merge is aborted, which restores the previous state); it never rebases, resets
-        # or forces. The last line of the output is "<HEAD before> <HEAD after>".
-        - name: Update the repository
-          ansible.builtin.command:
-            argv:
-              - /usr/bin/flock
-              - --wait
-              - "1800"
-              - data/.jobs.lock
-              - /bin/bash
-              - -euc
-              - |
-                ref="$1"
-                before="$(git rev-parse HEAD)"
-                if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-                  echo "The working tree has uncommitted changes; refusing to deploy" >&2
-                  exit 1
-                fi
-                git fetch --quiet origin "${ref}"
-                if ! git merge --quiet --ff-only "origin/${ref}" 2>/dev/null \
-                  && ! git merge --quiet --no-edit "origin/${ref}"; then
-                  git merge --abort || true
-                  echo "Merging origin/${ref} failed; the tree was left as before" >&2
-                  exit 1
-                fi
-                echo "${before} $(git rev-parse HEAD)"
-              - _
-              - "{{ hiresignalai_repo_ref }}"
-          args:
-            chdir: "{{ hiresignalai_repo_dir }}"
-          environment:
-            HOME: "{{ hiresignalai_home }}"
-          become: true
-          become_user: "{{ hiresignalai_user }}"
-          register: hiresignalai_pull
-          changed_when: (hiresignalai_pull.stdout_lines | last).split()[0] != (hiresignalai_pull.stdout_lines | last).split()[1]
-
-        # uv reports "Installed" or "Uninstalled" only when the environment changes.
-        - name: Install the dependencies
-          ansible.builtin.command:
-            argv:
-              - /usr/local/bin/uv
-              - sync
-              - --locked
-              - --no-dev
-              - --python
-              - "{{ hiresignalai_python_version }}"
-          args:
-            chdir: "{{ hiresignalai_repo_dir }}"
-          environment:
-            HOME: "{{ hiresignalai_home }}"
-          become: true
-          become_user: "{{ hiresignalai_user }}"
-          register: hiresignalai_sync
-          changed_when: "'Installed' in hiresignalai_sync.stderr or 'Uninstalled' in hiresignalai_sync.stderr"
-      always:
-        - name: Start the bot again
-          ansible.builtin.systemd:
-            name: hiresignalai-bot.service
-            state: started
-          when: hiresignalai_bot_status.status.LoadState | default('not-found') == 'loaded'
 
     - name: Install the systemd units
       ansible.builtin.template:
@@ -320,11 +256,14 @@
       loop:
         - hiresignalai-daily.service
         - hiresignalai-daily.timer
+        - hiresignalai-update.service
+        - hiresignalai-update.timer
         - hiresignalai-bot.service
         - hiresignalai-alert@.service
       notify:
         - Reload systemd
         - Restart daily timer
+        - Restart update timer
         - Restart bot
 
     - name: Load the new units
@@ -334,6 +273,13 @@
     - name: Enable and start the daily timer
       ansible.builtin.systemd:
         name: hiresignalai-daily.timer
+        state: started
+        enabled: true
+      when: not ansible_check_mode
+
+    - name: Enable and start the update timer
+      ansible.builtin.systemd:
+        name: hiresignalai-update.timer
         state: started
         enabled: true
       when: not ansible_check_mode
