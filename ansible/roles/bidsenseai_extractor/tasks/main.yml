@@ -28,10 +28,11 @@
       - ca-certificates
       - curl
       - git
-      - nginx
       - openssh-client
+      - rsync
       - sudo
       - tzdata
+      - xz-utils
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -55,6 +56,7 @@
   loop:
     - /opt/uv/{{ bidsenseai_extractor_uv_version }}
     - /opt/claude/{{ bidsenseai_extractor_claude_version }}
+    - /opt/node/{{ bidsenseai_extractor_node_version }}
 
 - name: Download uv
   ansible.builtin.get_url:
@@ -83,6 +85,38 @@
     src: /opt/uv/{{ bidsenseai_extractor_uv_version }}/uv
     dest: /usr/local/bin/uv
     state: link
+
+- name: Download Node.js
+  ansible.builtin.get_url:
+    url: "https://nodejs.org/dist/v{{ bidsenseai_extractor_node_version }}/node-v{{ bidsenseai_extractor_node_version }}-linux-x64.tar.xz"
+    dest: /opt/node/{{ bidsenseai_extractor_node_version }}.tar.xz
+    checksum: "sha256:{{ bidsenseai_extractor_node_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# The archive has one top-level directory, which is stripped.
+- name: Unpack Node.js
+  ansible.builtin.unarchive:
+    src: /opt/node/{{ bidsenseai_extractor_node_version }}.tar.xz
+    dest: /opt/node/{{ bidsenseai_extractor_node_version }}
+    remote_src: true
+    owner: root
+    group: root
+    extra_opts:
+      - --strip-components=1
+    creates: /opt/node/{{ bidsenseai_extractor_node_version }}/bin/node
+  when: not ansible_check_mode
+
+- name: Link Node.js into the path
+  ansible.builtin.file:
+    src: /opt/node/{{ bidsenseai_extractor_node_version }}/bin/{{ item }}
+    dest: /usr/local/bin/{{ item }}
+    state: link
+  loop:
+    - node
+    - npm
+    - npx
 
 - name: Download Claude Code
   ansible.builtin.get_url:
@@ -124,6 +158,14 @@
     group: root
     mode: "0600"
   no_log: true
+
+- name: Install the web build script
+  ansible.builtin.copy:
+    src: bidsenseai-extractor-web
+    dest: /usr/local/sbin/bidsenseai-extractor-web
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Install the alert script
   ansible.builtin.copy:
@@ -237,13 +279,31 @@
       register: bidsenseai_extractor_sync
       changed_when: "'Installed' in bidsenseai_extractor_sync.stderr or 'Uninstalled' in bidsenseai_extractor_sync.stderr"
 
-    - name: Create the site directory
-      ansible.builtin.file:
-        path: "{{ bidsenseai_extractor_site_root }}"
-        state: directory
+    # Idempotent: the key is generated once and kept.
+    - name: Generate the web deploy key
+      ansible.builtin.user:
+        name: "{{ bidsenseai_extractor_user }}"
+        generate_ssh_key: true
+        ssh_key_type: ed25519
+        ssh_key_file: .ssh/web_deploy_key
+        ssh_key_comment: bidsenseai-extractor
+
+    # Read from the web guest's sshd, which runs from first boot. Pinned: no trust on first use.
+    - name: Read the web guest's SSH host key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      delegate_to: "{{ groups['bidsenseai_web'] | first }}"
+      register: bidsenseai_extractor_web_host_key
+      when: not ansible_check_mode
+
+    - name: Pin the web guest's SSH host key
+      ansible.builtin.copy:
+        content: "{{ bidsenseai_extractor_web_host }} {{ (bidsenseai_extractor_web_host_key.content | b64decode).split(' ')[:2] | join(' ') }}\n"
+        dest: "{{ bidsenseai_extractor_web_known_hosts }}"
         owner: "{{ bidsenseai_extractor_user }}"
         group: "{{ bidsenseai_extractor_user }}"
-        mode: "0755"
+        mode: "0644"
+      when: not ansible_check_mode
 
     - name: Install the systemd units
       ansible.builtin.template:
@@ -256,12 +316,12 @@
         - bidsenseai-extractor.service
         - bidsenseai-extractor.timer
         - bidsenseai-extractor-alert@.service
-        - bidsenseai-extractor-site.service
-        - bidsenseai-extractor-site.timer
+        - bidsenseai-extractor-web.service
+        - bidsenseai-extractor-web.timer
       notify:
         - Reload systemd
         - Restart extractor timer
-        - Restart site timer
+        - Restart web timer
 
     - name: Remove the old non-template alert unit
       ansible.builtin.file:
@@ -280,31 +340,47 @@
         enabled: true
       when: not ansible_check_mode
 
-    - name: Enable and start the site timer
+    - name: Enable and start the web timer
       ansible.builtin.systemd:
-        name: bidsenseai-extractor-site.timer
+        name: bidsenseai-extractor-web.timer
         state: started
         enabled: true
       when: not ansible_check_mode
 
-- name: Serve the site to the reverse proxy
-  ansible.builtin.template:
-    src: nginx-site.conf.j2
-    dest: /etc/nginx/conf.d/bidsenseai.conf
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Reload nginx
+# The site moved to the bidsenseai_web guest. The units go first: the timer must not fire
+# while its files are being removed.
+- name: Look for the old site timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/bidsenseai-extractor-site.timer
+  register: bidsenseai_extractor_old_site_timer
 
-- name: Remove the default nginx site
+- name: Stop and disable the old site timer
+  ansible.builtin.systemd:
+    name: bidsenseai-extractor-site.timer
+    state: stopped
+    enabled: false
+  when: bidsenseai_extractor_old_site_timer.stat.exists and not ansible_check_mode
+
+- name: Remove the old site units
   ansible.builtin.file:
-    path: /etc/nginx/sites-enabled/default
+    path: "/etc/systemd/system/{{ item }}"
     state: absent
-  notify: Reload nginx
+  loop:
+    - bidsenseai-extractor-site.service
+    - bidsenseai-extractor-site.timer
+  notify: Reload systemd
 
-- name: Enable and start nginx
-  ansible.builtin.service:
-    name: nginx
-    state: started
-    enabled: true
-  when: not ansible_check_mode
+# Purging also stops the service and removes /etc/nginx, including the old site config.
+- name: Remove nginx
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - nginx-common
+    state: absent
+    purge: true
+    autoremove: true
+
+- name: Remove the old site directory
+  ansible.builtin.file:
+    path: /srv/bidsenseai
+    state: absent

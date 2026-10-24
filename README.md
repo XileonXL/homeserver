@@ -19,6 +19,7 @@ you can change.
 | Gatus | LXC | `192.168.1.61` | status page and service checks, with alerts through Telegram |
 | Jellyfin, qBittorrent, Prowlarr | LXC | `192.168.1.63` | media library on a dedicated disk, a torrent client that downloads onto it, and a search front end for it |
 | BidSense AI extractor | LXC | `192.168.1.80` | **temporary**: nightly document extraction for another project; not part of the house and will be removed, see [decisions](docs/decisions.md#a-temporary-bidsense-ai-extractor-outside-the-house) |
+| BidSense AI web | LXC | `192.168.1.81` | static web of the extractor's project, isolated from the machine that holds its credentials, see [decisions](docs/decisions.md#bidsense-ai-web-in-its-own-container) |
 | HireSignal AI | LXC | `192.168.1.85` | job-search assistant for another project; not part of the house, see [decisions](docs/decisions.md#hiresignal-ai-outside-the-house) |
 
 The host also sends its own alerts to Telegram: Proxmox notifications and a warning

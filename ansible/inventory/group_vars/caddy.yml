@@ -38,4 +38,4 @@ caddy_sites:
   - name: bidsenseai.homeserver.lan
     title: BidSense AI
     icon: fas fa-gavel
-    upstream: http://192.168.1.80:8080
+    upstream: http://192.168.1.81:8080

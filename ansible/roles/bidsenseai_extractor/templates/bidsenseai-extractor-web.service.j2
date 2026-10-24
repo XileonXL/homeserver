@@ -1,6 +1,6 @@
 # {{ ansible_managed }}
 [Unit]
-Description=Build the BidSense AI static site
+Description=Build the BidSense AI web site and publish it to the web guest
 Wants=network-online.target
 After=network-online.target
 OnFailure=bidsenseai-extractor-alert@%n.service
@@ -12,13 +12,14 @@ Group={{ bidsenseai_extractor_user }}
 Environment=HOME={{ bidsenseai_extractor_home }}
 EnvironmentFile={{ bidsenseai_extractor_config_dir }}/env
 WorkingDirectory={{ bidsenseai_extractor_repo_dir }}
-ExecStart=/usr/local/bin/uv run --frozen --no-sync --package adjudication-model adjudication-model site --out {{ bidsenseai_extractor_site_root }}/site --province {{ bidsenseai_extractor_site_province }}
-TimeoutStartSec={{ bidsenseai_extractor_site_timeout }}
+ExecStartPre=/usr/bin/install -d -m 0700 {{ bidsenseai_extractor_web_work_dir }}
+ExecStart=/usr/local/sbin/bidsenseai-extractor-web {{ bidsenseai_extractor_repo_dir }} {{ bidsenseai_extractor_web_work_dir }} {{ bidsenseai_extractor_web_province }} {{ bidsenseai_extractor_web_key_file }} {{ bidsenseai_extractor_web_known_hosts }} {{ bidsenseai_extractor_web_deploy_user }}@{{ bidsenseai_extractor_web_host }}
+TimeoutStartSec={{ bidsenseai_extractor_web_timeout }}
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-# The site directory swap needs its parent writable.
-ReadWritePaths={{ bidsenseai_extractor_home }}/.cache {{ bidsenseai_extractor_site_root }}
+# node_modules and dist are written in the checkout's web/.
+ReadWritePaths={{ bidsenseai_extractor_home }}/.cache {{ bidsenseai_extractor_repo_dir }}/web
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
@@ -28,6 +29,5 @@ ProtectKernelLogs=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
 LockPersonality=true
-# nginx runs as another user and must read the files.
 UMask=0022
 CapabilityBoundingSet=

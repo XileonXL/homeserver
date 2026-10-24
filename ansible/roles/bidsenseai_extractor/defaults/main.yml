@@ -10,7 +10,7 @@ bidsenseai_extractor_repo_ref: main
 bidsenseai_extractor_repo_dir: "{{ bidsenseai_extractor_home }}/bidsenseai"
 
 # Local path on the controller of the deploy key's private half (see .env.example).
-bidsenseai_extractor_deploy_key_file: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DEPLOY_KEY_FILE') }}"
+bidsenseai_extractor_deploy_key_file: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_DEPLOY_KEY_FILE') }}"
 # Pinned GitHub host key (https://api.github.com/meta, ssh_keys).
 bidsenseai_extractor_github_host_key: >-
   github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
@@ -27,27 +27,28 @@ bidsenseai_extractor_signing_helper_version: 1.8.5
 bidsenseai_extractor_signing_helper_checksum: beec9ed1c492d93db809890f16713e3556353294b823c2184ad4e891f1b2b54d
 
 # Local paths on the controller of the end-entity certificate and key (see .env.example).
-bidsenseai_extractor_cert_file: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_CERT_FILE') }}"
-bidsenseai_extractor_key_file: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_KEY_FILE') }}"
+bidsenseai_extractor_cert_file: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_CERT_FILE') }}"
+bidsenseai_extractor_key_file: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_KEY_FILE') }}"
 
 # IAM Roles Anywhere ARNs, from `tofu output` in the BidSense AI infra/ directory.
-bidsenseai_extractor_trust_anchor_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_TRUST_ANCHOR_ARN') }}"
-bidsenseai_extractor_profile_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_PROFILE_ARN') }}"
-bidsenseai_extractor_role_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_ROLE_ARN') }}"
+bidsenseai_extractor_trust_anchor_arn: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_TRUST_ANCHOR_ARN') }}"
+bidsenseai_extractor_profile_arn: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_PROFILE_ARN') }}"
+bidsenseai_extractor_role_arn: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_ROLE_ARN') }}"
 
 bidsenseai_extractor_aws_profile: bidsenseai-extractor
 bidsenseai_extractor_aws_region: eu-north-1
 
 # Database and bucket, from `tofu output` in the BidSense AI infra/ directory.
-bidsenseai_extractor_db_cluster_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DB_CLUSTER_ARN') }}"
-bidsenseai_extractor_db_secret_arn: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DB_SECRET_ARN') }}"
-bidsenseai_extractor_db_name: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DB_NAME') }}"
-bidsenseai_extractor_documents_bucket: "{{ lookup('ansible.builtin.env', 'EXTRACTOR_DOCUMENTS_BUCKET') }}"
+bidsenseai_extractor_db_cluster_arn: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_DB_CLUSTER_ARN') }}"
+bidsenseai_extractor_db_secret_arn: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_DB_SECRET_ARN') }}"
+bidsenseai_extractor_db_name: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_DB_NAME') }}"
+bidsenseai_extractor_documents_bucket: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_DOCUMENTS_BUCKET') }}"
 bidsenseai_extractor_oauth_token: "{{ lookup('ansible.builtin.env', 'CLAUDE_CODE_OAUTH_TOKEN') }}"
 
 bidsenseai_extractor_provider: claude-code
 bidsenseai_extractor_doc_types: charges_certificate
-bidsenseai_extractor_provinces: "28"
+# Same provinces as the daily scrape (`boe_provinces` in subastas-boe infra/variables.tf).
+bidsenseai_extractor_provinces: "28,08,46,29,04,03,30,41,11,35,38,45,07,43,12"
 
 # Documents per run.
 bidsenseai_extractor_limit: 10
@@ -55,14 +56,23 @@ bidsenseai_extractor_timer_calendar: "*-*-* 02:30:00 Europe/Madrid"
 # Upper bound for one run; each document may take up to 900 s.
 bidsenseai_extractor_timeout: 3h
 
-# Static site of open lots, built daily by `adjudication-model site` after the 06:30 Europe/Madrid
-# score (a Lambda in the BidSense AI infra). Served by nginx for the central Caddy only.
-bidsenseai_extractor_site_root: /srv/bidsenseai
-bidsenseai_extractor_site_province: "28"
-bidsenseai_extractor_site_timer_calendar: "*-*-* 07:00:00 Europe/Madrid"
-bidsenseai_extractor_site_timeout: 15min
-bidsenseai_extractor_site_port: 8080
-bidsenseai_extractor_site_allow: "{{ hostvars[groups['caddy'] | first].ansible_host }}"
+# Static site of open lots: after the 06:30 Europe/Madrid score (a Lambda in the BidSense AI
+# infra) the data is exported, the Astro site in web/ is built, and the result is uploaded to the
+# bidsenseai_web guest, which only serves files. The key pair is generated here; the web guest
+# restricts it to uploads into its releases directory and the symlink switch.
+bidsenseai_extractor_web_province: "{{ bidsenseai_extractor_provinces }}"
+bidsenseai_extractor_web_timer_calendar: "*-*-* 07:00:00 Europe/Madrid"
+bidsenseai_extractor_web_timeout: 20min
+bidsenseai_extractor_web_work_dir: "{{ bidsenseai_extractor_home }}/.cache/bidsenseai-web"
+bidsenseai_extractor_web_key_file: "{{ bidsenseai_extractor_home }}/.ssh/web_deploy_key"
+bidsenseai_extractor_web_known_hosts: "{{ bidsenseai_extractor_home }}/.ssh/web_known_hosts"
+bidsenseai_extractor_web_host: "{{ hostvars[groups['bidsenseai_web'] | first].ansible_host }}"
+bidsenseai_extractor_web_deploy_user: deploy
+
+# Node.js LTS for the web build, official tarball, x86_64 Linux, sha256 from SHASUMS256.txt.
+# Must satisfy web/package.json engines.
+bidsenseai_extractor_node_version: 24.22.1
+bidsenseai_extractor_node_checksum: 6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
 
 # Failure alerts reuse the bot of the alerts role.
 bidsenseai_extractor_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"

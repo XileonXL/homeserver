@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Forced command of the deploy key. Allows exactly two things:
+#   rsync into the releases directory, write-only (through rrsync), and
+#   "switch <release>": point "current" at an uploaded release and prune old ones.
+# Usage: bidsenseai-web-deploy <web root> <releases kept>. The client command is in SSH_ORIGINAL_COMMAND.
+set -euo pipefail
+
+readonly RSYNC_PREFIX="rsync --server "
+readonly SWITCH_PREFIX="switch "
+readonly RELEASE_PATTERN='^[0-9]{8}T[0-9]{6}Z$'
+
+die() {
+  printf '%s: %s\n' "${0##*/}" "$*" >&2
+  exit 1
+}
+
+switch_release() {
+  local root="$1" keep="$2" name="$3"
+  local releases="${root}/releases"
+
+  [[ "${name}" =~ ${RELEASE_PATTERN} ]] || die "invalid release name"
+  [[ -f "${releases}/${name}/index.html" ]] || die "release ${name} is missing or has no index.html"
+  [[ -z "$(find "${releases}/${name}" -type l -print -quit)" ]] || die "release ${name} contains a symlink"
+
+  # Atomic: build the link beside the old one and rename over it.
+  ln -sfn "releases/${name}" "${root}/current.new"
+  mv -T "${root}/current.new" "${root}/current"
+
+  local live dir count
+  live="$(readlink "${root}/current")"
+  count=0
+  while IFS= read -r dir; do
+    count=$((count + 1))
+    if ((count > keep)) && [[ "releases/${dir##*/}" != "${live}" ]]; then
+      rm -rf -- "${dir}"
+    fi
+  done < <(find "${releases}" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended \
+    -regex ".*/[0-9]{8}T[0-9]{6}Z" | sort -r)
+}
+
+main() {
+  local root="${1:?usage: ${0##*/} <web root> <releases kept>}"
+  local keep="${2:?usage: ${0##*/} <web root> <releases kept>}"
+  local cmd="${SSH_ORIGINAL_COMMAND:-}"
+
+  case "${cmd}" in
+    "${RSYNC_PREFIX}"*)
+      exec /usr/bin/rrsync -wo "${root}/releases"
+      ;;
+    "${SWITCH_PREFIX}"*)
+      switch_release "${root}" "${keep}" "${cmd#"${SWITCH_PREFIX}"}"
+      ;;
+    *)
+      die "command not allowed"
+      ;;
+  esac
+}
+
+main "$@"

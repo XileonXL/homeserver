@@ -11,15 +11,8 @@
   when: not ansible_check_mode
 
 # Skipped in check mode: the timer unit does not exist yet on a fresh host.
-- name: Restart site timer
+- name: Restart web timer
   ansible.builtin.systemd:
-    name: bidsenseai-extractor-site.timer
+    name: bidsenseai-extractor-web.timer
     state: restarted
-  when: not ansible_check_mode
-
-# Skipped in check mode: nginx may not be installed yet.
-- name: Reload nginx
-  ansible.builtin.service:
-    name: nginx
-    state: reloaded
   when: not ansible_check_mode

@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+server {
+	listen {{ ansible_host }}:{{ bidsenseai_web_port }} default_server;
+	server_name _;
+	server_tokens off;
+	root {{ bidsenseai_web_root }}/current;
+	index index.html;
+
+	# Only the central Caddy reaches this server.
+	allow {{ bidsenseai_web_allow }};
+	deny all;
+
+	# add_header is not inherited by a location that sets its own, so each one includes the file.
+	include /etc/nginx/snippets/bidsenseai-web-headers.conf;
+
+	location / {
+		try_files $uri $uri/ =404;
+	}
+
+	location /_astro/ {
+		include /etc/nginx/snippets/bidsenseai-web-headers.conf;
+		add_header Cache-Control "public, max-age=31536000, immutable" always;
+		try_files $uri =404;
+	}
+}

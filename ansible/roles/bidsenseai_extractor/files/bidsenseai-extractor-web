@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Export the data, build the Astro site and publish it to the web guest.
+# Usage: bidsenseai-extractor-web <repo dir> <work dir> <provinces, comma-separated> <ssh key> <known hosts> <user@host>
+# AWS and database settings come from the environment (systemd EnvironmentFile).
+set -euo pipefail
+
+main() {
+  local repo="${1:?usage: ${0##*/} <repo dir> <work dir> <province> <ssh key> <known hosts> <user@host>}"
+  local work="${2:?missing work dir}"
+  local provinces="${3:?missing provinces}"
+  local key="${4:?missing ssh key}"
+  local known_hosts="${5:?missing known hosts}"
+  local target="${6:?missing user@host}"
+
+  local data="${work}/data"
+  local -a province_args=()
+  local province
+  local -a list
+  IFS=, read -ra list <<< "${provinces}"
+  for province in "${list[@]}"; do
+    province_args+=(--province "${province}")
+  done
+  local release
+  release="$(date -u +%Y%m%dT%H%M%SZ)"
+
+  local -a ssh_cmd=(ssh -i "${key}" -o IdentitiesOnly=yes -o BatchMode=yes
+    -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${known_hosts}")
+
+  rm -rf -- "${data}"
+  mkdir -p -- "${data}"
+  cd -- "${repo}"
+  /usr/local/bin/uv run --frozen --no-sync --package adjudication-model \
+    adjudication-model web-export --out "${data}" "${province_args[@]}"
+
+  # npm never sees the Claude token, and dependency install scripts do not run.
+  cd -- "${repo}/web"
+  export ASTRO_TELEMETRY_DISABLED=1 BIDSENSE_DATA_DIR="${data}" npm_config_cache="${work}/npm"
+  env -u CLAUDE_CODE_OAUTH_TOKEN npm ci --ignore-scripts --no-audit --no-fund
+  env -u CLAUDE_CODE_OAUTH_TOKEN npm run build
+
+  # The key only allows write-only rsync into the releases directory and the switch command.
+  rsync -rt --chmod=D755,F644 -e "${ssh_cmd[*]}" dist/ "${target}:${release}/"
+  "${ssh_cmd[@]}" "${target}" "switch ${release}"
+  printf 'published release %s\n' "${release}"
+}
+
+main "$@"

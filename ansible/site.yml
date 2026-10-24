@@ -77,6 +77,12 @@
   roles:
     - role: bidsenseai_extractor
 
+- name: Configure the BidSense AI web server
+  hosts: bidsenseai_web
+  gather_facts: false
+
+  roles:
+    - role: bidsenseai_web
 
 - name: Configure HireSignal AI
   hosts: hiresignalai

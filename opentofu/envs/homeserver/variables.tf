@@ -99,6 +99,16 @@ variable "containers" {
       swap   = 512
       disk   = 12
     }
+    # Static site of BidSense AI, isolated from the extractor that holds the credentials. Not
+    # part of the house: outside the consecutive numbering on purpose.
+    bidsenseai-web = {
+      vm_id  = 181
+      ip     = "192.168.1.81"
+      cores  = 1
+      memory = 256
+      swap   = 256
+      disk   = 4
+    }
   }
 }
 

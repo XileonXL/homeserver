@@ -1,0 +1,103 @@
+---
+- name: Install packages
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - python3
+      - rsync
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the deploy user
+  ansible.builtin.user:
+    name: "{{ bidsenseai_web_deploy_user }}"
+    system: true
+    # A shell is needed to run the forced command. "*" is never a valid password, and unlike
+    # "!" sshd does not treat the account as locked.
+    shell: /bin/sh
+    password: "*"
+    home: "{{ bidsenseai_web_deploy_home }}"
+    create_home: false
+
+# Owned by root, so the deploy user cannot change its own authorized_keys.
+- name: Create the deploy user's home and .ssh
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ bidsenseai_web_deploy_home }}"
+    - "{{ bidsenseai_web_deploy_home }}/.ssh"
+
+- name: Install the deploy command
+  ansible.builtin.copy:
+    src: bidsenseai-web-deploy
+    dest: /usr/local/sbin/bidsenseai-web-deploy
+    owner: root
+    group: root
+    mode: "0755"
+
+# The key pair is created by the bidsenseai_extractor role. Run it first.
+- name: Read the extractor's deploy public key
+  ansible.builtin.slurp:
+    src: "{{ bidsenseai_web_extractor_pubkey_file }}"
+  delegate_to: "{{ bidsenseai_web_extractor_host }}"
+  register: bidsenseai_web_pubkey
+  when: not ansible_check_mode
+
+- name: Authorize the extractor with a restricted key
+  ansible.builtin.copy:
+    content: >-
+      command="/usr/local/sbin/bidsenseai-web-deploy {{ bidsenseai_web_root }} {{ bidsenseai_web_keep_releases }}",restrict
+      {{ (bidsenseai_web_pubkey.content | b64decode | trim).split(' ')[:2] | join(' ') }}
+      bidsenseai-extractor
+    dest: "{{ bidsenseai_web_deploy_home }}/.ssh/authorized_keys"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not ansible_check_mode
+
+- name: Create the web root and the releases directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ bidsenseai_web_deploy_user }}"
+    group: "{{ bidsenseai_web_deploy_user }}"
+    mode: "0755"
+  loop:
+    - "{{ bidsenseai_web_root }}"
+    - "{{ bidsenseai_web_root }}/releases"
+
+- name: Install the security headers
+  ansible.builtin.template:
+    src: security-headers.conf.j2
+    dest: /etc/nginx/snippets/bidsenseai-web-headers.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Serve the site to the reverse proxy
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: /etc/nginx/conf.d/bidsenseai-web.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Remove the default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Enable and start nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+  when: not ansible_check_mode

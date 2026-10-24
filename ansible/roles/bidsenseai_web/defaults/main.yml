@@ -1,0 +1,15 @@
+---
+bidsenseai_web_root: /srv/bidsenseai-web
+bidsenseai_web_port: 8080
+# Only the central Caddy reaches nginx.
+bidsenseai_web_allow: "{{ hostvars[groups['caddy'] | first].ansible_host }}"
+
+# Releases kept after a switch, the live one included.
+bidsenseai_web_keep_releases: 3
+
+bidsenseai_web_deploy_user: deploy
+bidsenseai_web_deploy_home: /var/lib/bidsenseai-web-deploy
+
+# The extractor generates the key pair (bidsenseai_extractor role); the public half is read from it.
+bidsenseai_web_extractor_host: "{{ groups['bidsenseai_extractor'] | first }}"
+bidsenseai_web_extractor_pubkey_file: /var/lib/extractor/.ssh/web_deploy_key.pub

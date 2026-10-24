@@ -142,7 +142,8 @@ status check are removed so nothing links to or alerts on a guest that is off. S
 `bidsenseai-extractor` (vm_id 180, `192.168.1.80`) runs the nightly document extraction of
 another project. It is not a service of the house, so it stays out of the consecutive
 numbering of the others and is not on the status page. Only its static site
-(`bidsenseai.homeserver.lan`) is published by the proxy and the DNS.
+(`bidsenseai.homeserver.lan`, served by [its own container](#bidsense-ai-web-in-its-own-container))
+is published by the proxy and the DNS.
 
 It is temporary and does not belong in this repository long term. To remove it, delete its
 entry in `opentofu/envs/homeserver/variables.tf`, its group in `ansible/inventory/hosts.yml`,
@@ -181,3 +182,26 @@ To remove it, delete its entry in `opentofu/envs/homeserver/variables.tf`, its g
 `ansible/inventory/hosts.yml`, its play in `ansible/site.yml`, the `hiresignalai` role, the
 `HIRESIGNALAI_*` variables in `.env.example` and `ansible/README.md`, its row in the root
 `README.md` and this section, and delete the deploy key in the repository settings.
+
+## BidSense AI web in its own container
+
+`bidsenseai-web` (vm_id 181, `192.168.1.81`, 1 core, 256 MB, 4 GB) only serves the static
+BidSense AI site with nginx. The extractor builds the site (Astro, Node.js) and uploads it.
+
+Why a separate guest: the extractor holds a Claude Code token, an AWS certificate and
+database access, and runs a build that pulls npm dependencies. A web server on that machine
+would put an internet-facing process next to those credentials. The web guest has none of
+them and no outbound need, so a flaw in nginx or in the site exposes only public files.
+
+Deploy mechanism: the extractor has a dedicated SSH key whose public half is installed on the
+web guest for the `deploy` user with a forced command and `restrict`. The command allows only
+write-only rsync into `releases/` (through `rrsync -wo`) and `switch <timestamp>`, which
+checks the release (name format, `index.html`, no symlinks), repoints `current` atomically
+and keeps the last 3 releases. A forced command gives a synchronous result, so a failed switch
+fails the build unit and raises the Telegram alert; a path unit on the web guest would have
+needed alert credentials there. No sudo and no root process is involved; the deploy user
+owns only `/srv/bidsenseai-web`.
+
+To remove it, delete its entry in `opentofu/envs/homeserver/variables.tf`, its group in
+`ansible/inventory/hosts.yml`, its play in `ansible/site.yml`, the `bidsenseai_web` role, its row in the root
+`README.md`, and this section, and revert the web parts of the extractor role.
