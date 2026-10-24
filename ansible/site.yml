@@ -76,3 +76,11 @@
 
   roles:
     - role: bidsenseai_extractor
+
+
+- name: Configure HireSignal AI
+  hosts: hiresignalai
+  gather_facts: false
+
+  roles:
+    - role: hiresignalai

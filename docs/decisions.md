@@ -158,3 +158,26 @@ BidSense AI `infra/`; documents already extracted are not extracted again.
 AWS access uses IAM Roles Anywhere with a certificate from a self-managed CA, so no
 long-lived access key lives on the machine. Credentials last an hour and the certificate
 alone can be revoked.
+
+## HireSignal AI outside the house
+
+`hiresignalai` (vm_id 181, `192.168.1.81`) runs the daily job search and the Telegram bot of
+another project. Like the extractor it is not a service of the house, so it stays out of the
+consecutive numbering and neither the status page nor the DNS and proxy include it.
+
+It runs here and not on AWS because the Claude Code subscription runs here and the volume is
+tiny: one daily run and a bot that mostly waits. The database (`data/jobs.db`) stays in git.
+This guest is its only writer, through a deploy key with write access, so there is no merge
+to resolve. The Telegram bot uses long polling, so nothing is exposed and no proxy entry or
+port is needed. Its Telegram bot is separate from the house alerts bot; failures of its units
+still reach the alerts channel.
+
+Accepted risk: the deploy key has write access to the code repository, so it can push code to
+`main`, and the next deploy runs it. This is mitigated by Claude running without tools, the
+service only committing `data/jobs.db`, and reviews on the Mac. The cleaner alternative, a
+separate data repository so the code key can be read-only, is the path if the project grows.
+
+To remove it, delete its entry in `opentofu/envs/homeserver/variables.tf`, its group in
+`ansible/inventory/hosts.yml`, its play in `ansible/site.yml`, the `hiresignalai` role, the
+`HIRESIGNALAI_*` variables in `.env.example` and `ansible/README.md`, its row in the root
+`README.md` and this section, and delete the deploy key in the repository settings.

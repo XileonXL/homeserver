@@ -1,0 +1,48 @@
+---
+hiresignalai_user: hiresignalai
+hiresignalai_home: /var/lib/hiresignalai
+hiresignalai_config_dir: /etc/hiresignalai
+
+# Private repository, over SSH with a deploy key that has write access: the service commits
+# and pushes data/jobs.db. Tracks main: each run of the play deploys the latest pushed main.
+hiresignalai_repo_url: git@github.com:XileonXL/hiresignalai.git
+hiresignalai_repo_ref: main
+hiresignalai_repo_dir: "{{ hiresignalai_home }}/hiresignalai"
+
+# Local path on the controller of the deploy key's private half (see .env.example).
+hiresignalai_deploy_key_file: "{{ lookup('ansible.builtin.env', 'HIRESIGNALAI_DEPLOY_KEY_FILE') }}"
+# Pinned GitHub host key (https://api.github.com/meta, ssh_keys).
+hiresignalai_github_host_key: >-
+  github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+
+# Identity of the commits the service pushes.
+hiresignalai_git_name: hiresignalai-bot
+hiresignalai_git_email: "{{ lookup('ansible.builtin.env', 'HIRESIGNALAI_GIT_EMAIL') | default('hiresignalai-bot@users.noreply.github.com', true) }}"
+
+# Pinned tools, x86_64 Linux. Checksums are sha256. uv and Claude Code are the versions of the
+# bidsenseai_extractor role; bump them together.
+hiresignalai_uv_version: 0.13.5
+hiresignalai_uv_checksum: f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f
+# Full patch version, downloaded by uv (supported by the pinned uv).
+hiresignalai_python_version: "3.12.15"
+
+hiresignalai_claude_version: 2.1.308
+hiresignalai_claude_checksum: 356733f185fa988e6bf3aa9a555269fdd167982a2e2a80d3c8a78037bb92ad58
+
+hiresignalai_typst_version: 0.15.1
+hiresignalai_typst_checksum: a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
+
+# Shared with the extractor: output of `claude setup-token`.
+hiresignalai_oauth_token: "{{ lookup('ansible.builtin.env', 'CLAUDE_CODE_OAUTH_TOKEN') }}"
+
+# The HireSignal AI bot, distinct from the house alerts bot below.
+hiresignalai_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'HIRESIGNALAI_TELEGRAM_BOT_TOKEN') }}"
+hiresignalai_telegram_chat_id: "{{ lookup('ansible.builtin.env', 'HIRESIGNALAI_TELEGRAM_CHAT_ID') }}"
+
+hiresignalai_daily_calendar: "*-*-* 08:00:00 Europe/Madrid"
+# Upper bound for one daily run.
+hiresignalai_daily_timeout: 2h
+
+# Failure alerts reuse the bot of the alerts role.
+hiresignalai_alert_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
+hiresignalai_alert_telegram_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"

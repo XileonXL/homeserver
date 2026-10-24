@@ -1,0 +1,346 @@
+---
+- name: Fail without the secrets and files from .env
+  ansible.builtin.assert:
+    that:
+      - hiresignalai_deploy_key_file | length > 0
+      - hiresignalai_oauth_token | length > 0
+      - hiresignalai_telegram_bot_token | length > 0
+      - hiresignalai_telegram_chat_id | length > 0
+      - hiresignalai_alert_telegram_bot_token | length > 0
+      - hiresignalai_alert_telegram_chat_id | length > 0
+    fail_msg: >-
+      HIRESIGNALAI_DEPLOY_KEY_FILE, HIRESIGNALAI_TELEGRAM_BOT_TOKEN, HIRESIGNALAI_TELEGRAM_CHAT_ID,
+      CLAUDE_CODE_OAUTH_TOKEN, TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty. Fill in .env
+      (see .env.example) and load it.
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Install packages
+  ansible.builtin.apt:
+    name:
+      - acl
+      - ca-certificates
+      - curl
+      - git
+      - openssh-client
+      - sudo
+      - tzdata
+      - xz-utils
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the HireSignal AI system user
+  ansible.builtin.user:
+    name: "{{ hiresignalai_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ hiresignalai_home }}"
+    create_home: true
+  register: hiresignalai_user_result
+
+- name: Create the program directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/uv/{{ hiresignalai_uv_version }}
+    - /opt/claude/{{ hiresignalai_claude_version }}
+    - /opt/typst/{{ hiresignalai_typst_version }}
+
+- name: Download uv
+  ansible.builtin.get_url:
+    url: "https://github.com/astral-sh/uv/releases/download/{{ hiresignalai_uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+    dest: /opt/uv/{{ hiresignalai_uv_version }}.tar.gz
+    checksum: "sha256:{{ hiresignalai_uv_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# The archive has one top-level directory, which is stripped.
+- name: Unpack uv
+  ansible.builtin.unarchive:
+    src: /opt/uv/{{ hiresignalai_uv_version }}.tar.gz
+    dest: /opt/uv/{{ hiresignalai_uv_version }}
+    remote_src: true
+    owner: root
+    group: root
+    extra_opts:
+      - --strip-components=1
+    creates: /opt/uv/{{ hiresignalai_uv_version }}/uv
+  when: not ansible_check_mode
+
+- name: Link uv into the path
+  ansible.builtin.file:
+    src: /opt/uv/{{ hiresignalai_uv_version }}/uv
+    dest: /usr/local/bin/uv
+    state: link
+
+- name: Download Claude Code
+  ansible.builtin.get_url:
+    url: "https://downloads.claude.ai/claude-code-releases/{{ hiresignalai_claude_version }}/linux-x64/claude"
+    dest: /opt/claude/{{ hiresignalai_claude_version }}/claude
+    checksum: "sha256:{{ hiresignalai_claude_checksum }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Link Claude Code into the path
+  ansible.builtin.file:
+    src: /opt/claude/{{ hiresignalai_claude_version }}/claude
+    dest: /usr/local/bin/claude
+    state: link
+
+- name: Download typst
+  ansible.builtin.get_url:
+    url: "https://github.com/typst/typst/releases/download/v{{ hiresignalai_typst_version }}/typst-x86_64-unknown-linux-musl.tar.xz"
+    dest: /opt/typst/{{ hiresignalai_typst_version }}.tar.xz
+    checksum: "sha256:{{ hiresignalai_typst_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# The archive has one top-level directory, which is stripped.
+- name: Unpack typst
+  ansible.builtin.unarchive:
+    src: /opt/typst/{{ hiresignalai_typst_version }}.tar.xz
+    dest: /opt/typst/{{ hiresignalai_typst_version }}
+    remote_src: true
+    owner: root
+    group: root
+    extra_opts:
+      - --strip-components=1
+    creates: /opt/typst/{{ hiresignalai_typst_version }}/typst
+  when: not ansible_check_mode
+
+- name: Link typst into the path
+  ansible.builtin.file:
+    src: /opt/typst/{{ hiresignalai_typst_version }}/typst
+    dest: /usr/local/bin/typst
+    state: link
+
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: "{{ hiresignalai_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the alert credentials
+  ansible.builtin.template:
+    src: alerts.env.j2
+    dest: "{{ hiresignalai_config_dir }}/alerts.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install the alert script
+  ansible.builtin.copy:
+    src: hiresignalai-alert
+    dest: /usr/local/sbin/hiresignalai-alert
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ hiresignalai_config_dir }}/env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart bot
+
+# The user does not exist in check mode on a fresh host, so everything that
+# names it as an owner is skipped there.
+- name: Set up the HireSignal AI user's files, repository and environment
+  when: not (ansible_check_mode and hiresignalai_user_result is changed)
+  block:
+    - name: Create the user's directories
+      ansible.builtin.file:
+        path: "{{ hiresignalai_home }}/{{ item.path }}"
+        state: directory
+        owner: "{{ hiresignalai_user }}"
+        group: "{{ hiresignalai_user }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: .ssh, mode: "0700" }
+        - { path: .cache, mode: "0700" }
+
+    - name: Deploy the GitHub deploy key
+      ansible.builtin.copy:
+        src: "{{ hiresignalai_deploy_key_file }}"
+        dest: "{{ hiresignalai_home }}/.ssh/deploy_key"
+        owner: "{{ hiresignalai_user }}"
+        group: "{{ hiresignalai_user }}"
+        mode: "0600"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Pin the GitHub host key
+      ansible.builtin.copy:
+        content: "{{ hiresignalai_github_host_key | trim }}\n"
+        dest: "{{ hiresignalai_home }}/.ssh/known_hosts"
+        owner: "{{ hiresignalai_user }}"
+        group: "{{ hiresignalai_user }}"
+        mode: "0644"
+
+    # The service pushes with the same key: git reads core.sshCommand from here.
+    - name: Write the git configuration
+      ansible.builtin.template:
+        src: gitconfig.j2
+        dest: "{{ hiresignalai_home }}/.gitconfig"
+        owner: "{{ hiresignalai_user }}"
+        group: "{{ hiresignalai_user }}"
+        mode: "0644"
+
+    - name: Check out the repository on first run
+      ansible.builtin.git:
+        repo: "{{ hiresignalai_repo_url }}"
+        dest: "{{ hiresignalai_repo_dir }}"
+        version: "{{ hiresignalai_repo_ref }}"
+        update: false
+        key_file: "{{ hiresignalai_home }}/.ssh/deploy_key"
+        ssh_opts: >-
+          -o BatchMode=yes
+          -o StrictHostKeyChecking=yes
+          -o UserKnownHostsFile={{ hiresignalai_home }}/.ssh/known_hosts
+          -o IdentitiesOnly=yes
+      become: true
+      become_user: "{{ hiresignalai_user }}"
+
+    # The daily run writes and publishes data/jobs.db: never deploy under it.
+    - name: Query the daily service
+      ansible.builtin.systemd:
+        name: hiresignalai-daily.service
+      register: hiresignalai_daily_status
+
+    - name: Fail if the daily run is in progress
+      ansible.builtin.assert:
+        that:
+          - hiresignalai_daily_status.status.ActiveState | default('inactive') not in ['active', 'activating', 'deactivating']
+        fail_msg: >-
+          hiresignalai-daily.service is running. Wait for it to finish and re-run the play; it
+          never deploys under a running daily.
+        quiet: true
+
+    - name: Query the bot service
+      ansible.builtin.systemd:
+        name: hiresignalai-bot.service
+      register: hiresignalai_bot_status
+
+    # Deploy window: the bot is stopped (it handles SIGTERM gracefully) so it is not killed
+    # mid-git or mid-sync, and is always started again afterwards, even if the deploy fails.
+    - name: Deploy the code with the bot stopped
+      when: not ansible_check_mode
+      block:
+        - name: Stop the bot
+          ansible.builtin.systemd:
+            name: hiresignalai-bot.service
+            state: stopped
+          when: hiresignalai_bot_status.status.LoadState | default('not-found') == 'loaded'
+
+        # Under the app's own lock. Fast-forwards when it can, otherwise merges (the service's
+        # local data commits are never rewritten). Fails on a dirty tree or a merge conflict
+        # (the merge is aborted, which restores the previous state); it never rebases, resets
+        # or forces. The last line of the output is "<HEAD before> <HEAD after>".
+        - name: Update the repository
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/flock
+              - --wait
+              - "1800"
+              - data/.jobs.lock
+              - /bin/bash
+              - -euc
+              - |
+                ref="$1"
+                before="$(git rev-parse HEAD)"
+                if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+                  echo "The working tree has uncommitted changes; refusing to deploy" >&2
+                  exit 1
+                fi
+                git fetch --quiet origin "${ref}"
+                if ! git merge --quiet --ff-only "origin/${ref}" 2>/dev/null \
+                  && ! git merge --quiet --no-edit "origin/${ref}"; then
+                  git merge --abort || true
+                  echo "Merging origin/${ref} failed; the tree was left as before" >&2
+                  exit 1
+                fi
+                echo "${before} $(git rev-parse HEAD)"
+              - _
+              - "{{ hiresignalai_repo_ref }}"
+          args:
+            chdir: "{{ hiresignalai_repo_dir }}"
+          environment:
+            HOME: "{{ hiresignalai_home }}"
+          become: true
+          become_user: "{{ hiresignalai_user }}"
+          register: hiresignalai_pull
+          changed_when: (hiresignalai_pull.stdout_lines | last).split()[0] != (hiresignalai_pull.stdout_lines | last).split()[1]
+
+        # uv reports "Installed" or "Uninstalled" only when the environment changes.
+        - name: Install the dependencies
+          ansible.builtin.command:
+            argv:
+              - /usr/local/bin/uv
+              - sync
+              - --locked
+              - --no-dev
+              - --python
+              - "{{ hiresignalai_python_version }}"
+          args:
+            chdir: "{{ hiresignalai_repo_dir }}"
+          environment:
+            HOME: "{{ hiresignalai_home }}"
+          become: true
+          become_user: "{{ hiresignalai_user }}"
+          register: hiresignalai_sync
+          changed_when: "'Installed' in hiresignalai_sync.stderr or 'Uninstalled' in hiresignalai_sync.stderr"
+      always:
+        - name: Start the bot again
+          ansible.builtin.systemd:
+            name: hiresignalai-bot.service
+            state: started
+          when: hiresignalai_bot_status.status.LoadState | default('not-found') == 'loaded'
+
+    - name: Install the systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - hiresignalai-daily.service
+        - hiresignalai-daily.timer
+        - hiresignalai-bot.service
+        - hiresignalai-alert@.service
+      notify:
+        - Reload systemd
+        - Restart daily timer
+        - Restart bot
+
+    - name: Load the new units
+      ansible.builtin.meta: flush_handlers
+
+    # The units do not exist in check mode on a host that never had them.
+    - name: Enable and start the daily timer
+      ansible.builtin.systemd:
+        name: hiresignalai-daily.timer
+        state: started
+        enabled: true
+      when: not ansible_check_mode
+
+    - name: Enable and start the bot
+      ansible.builtin.systemd:
+        name: hiresignalai-bot.service
+        state: started
+        enabled: true
+      when: not ansible_check_mode

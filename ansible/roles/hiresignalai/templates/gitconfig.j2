@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+[user]
+	name = {{ hiresignalai_git_name }}
+	email = {{ hiresignalai_git_email }}
+[commit]
+	gpgsign = false
+[core]
+	sshCommand = ssh -i {{ hiresignalai_home }}/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile={{ hiresignalai_home }}/.ssh/known_hosts

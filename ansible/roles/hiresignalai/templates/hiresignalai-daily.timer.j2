@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Run the HireSignal AI daily job search
+
+[Timer]
+OnCalendar={{ hiresignalai_daily_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

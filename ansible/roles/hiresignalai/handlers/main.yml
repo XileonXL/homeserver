@@ -1,0 +1,18 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+# Skipped in check mode: the timer unit does not exist yet on a fresh host.
+- name: Restart daily timer
+  ansible.builtin.systemd:
+    name: hiresignalai-daily.timer
+    state: restarted
+  when: not ansible_check_mode
+
+# Skipped in check mode: the unit does not exist yet on a fresh host.
+- name: Restart bot
+  ansible.builtin.systemd:
+    name: hiresignalai-bot.service
+    state: restarted
+  when: not ansible_check_mode

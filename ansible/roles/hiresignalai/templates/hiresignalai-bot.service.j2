@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+[Unit]
+Description=HireSignal AI Telegram bot
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=hiresignalai-alert@%n.service
+
+[Service]
+Type=simple
+User={{ hiresignalai_user }}
+Group={{ hiresignalai_user }}
+Environment=HOME={{ hiresignalai_home }}
+EnvironmentFile={{ hiresignalai_config_dir }}/env
+WorkingDirectory={{ hiresignalai_repo_dir }}
+ExecStart=/usr/local/bin/uv run --frozen --no-sync jobsearch bot
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths={{ hiresignalai_home }}
+ProtectHome=true
+ReadOnlyPaths={{ hiresignalai_home }}/.ssh {{ hiresignalai_home }}/.gitconfig
+ProtectKernelTunables=true
+ProtectControlGroups=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+UMask=0077
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
