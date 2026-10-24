@@ -161,7 +161,7 @@ alone can be revoked.
 
 ## HireSignal AI outside the house
 
-`hiresignalai` (vm_id 190, `192.168.1.90`) runs the daily job search and the Telegram bot of
+`hiresignalai` (vm_id 185, `192.168.1.85`) runs the daily job search and the Telegram bot of
 another project. Like the extractor it is not a service of the house, so it stays out of the
 consecutive numbering and neither the status page nor the DNS and proxy include it.
 
