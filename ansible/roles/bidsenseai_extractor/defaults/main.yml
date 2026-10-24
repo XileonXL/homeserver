@@ -55,6 +55,15 @@ bidsenseai_extractor_timer_calendar: "*-*-* 02:30:00 Europe/Madrid"
 # Upper bound for one run; each document may take up to 900 s.
 bidsenseai_extractor_timeout: 3h
 
+# Static site of open lots, built daily by `adjudication-model site` after the 06:30 Europe/Madrid
+# score (a Lambda in the BidSense AI infra). Served by nginx for the central Caddy only.
+bidsenseai_extractor_site_root: /srv/bidsenseai
+bidsenseai_extractor_site_province: "28"
+bidsenseai_extractor_site_timer_calendar: "*-*-* 07:00:00 Europe/Madrid"
+bidsenseai_extractor_site_timeout: 15min
+bidsenseai_extractor_site_port: 8080
+bidsenseai_extractor_site_allow: "{{ hostvars[groups['caddy'] | first].ansible_host }}"
+
 # Failure alerts reuse the bot of the alerts role.
 bidsenseai_extractor_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
 bidsenseai_extractor_telegram_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"

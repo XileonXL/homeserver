@@ -11,7 +11,11 @@ credentials from IAM Roles Anywhere (`aws_signing_helper` as `credential_process
   (`bidsenseai_extractor_repo_ref`). Re-run the play to deploy the latest pushed `main`.
 - Tools at pinned versions with checksums: uv, Claude Code, `aws_signing_helper`.
 - Configuration in `/etc/bidsenseai-extractor/` (`env`, `alerts.env`, certificate and key).
-- A failed run sends a Telegram message through `OnFailure`. `TELEGRAM_BOT_TOKEN` and
+- Site: `adjudication-model site --province 28` runs daily at 07:00 Europe/Madrid
+  (`bidsenseai-extractor-site.timer`), after the 06:30 score Lambda, into
+  `/srv/bidsenseai/site`. nginx serves it on port 8080 to the central Caddy only, which
+  publishes it as `bidsenseai.homeserver.lan`.
+- A failed extraction run or site build sends a Telegram message through `OnFailure=bidsenseai-extractor-alert@%n.service` (template unit; the failed unit name is passed to the alert script). `TELEGRAM_BOT_TOKEN` and
   `TELEGRAM_CHAT_ID` must both be in `.env`; run the `alerts` role first, which writes the chat id there.
 - Variables and defaults: `defaults/main.yml`. Secrets and ARNs come from `.env`; see
   `.env.example`.

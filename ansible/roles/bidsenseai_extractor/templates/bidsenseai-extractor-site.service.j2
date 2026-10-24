@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Build the BidSense AI static site
+Wants=network-online.target
+After=network-online.target
+OnFailure=bidsenseai-extractor-alert@%n.service
+
+[Service]
+Type=oneshot
+User={{ bidsenseai_extractor_user }}
+Group={{ bidsenseai_extractor_user }}
+Environment=HOME={{ bidsenseai_extractor_home }}
+EnvironmentFile={{ bidsenseai_extractor_config_dir }}/env
+WorkingDirectory={{ bidsenseai_extractor_repo_dir }}
+ExecStart=/usr/local/bin/uv run --frozen --no-sync --package adjudication-model adjudication-model site --out {{ bidsenseai_extractor_site_root }}/site --province {{ bidsenseai_extractor_site_province }}
+TimeoutStartSec={{ bidsenseai_extractor_site_timeout }}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# The site directory swap needs its parent writable.
+ReadWritePaths={{ bidsenseai_extractor_home }}/.cache {{ bidsenseai_extractor_site_root }}
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+# nginx runs as another user and must read the files.
+UMask=0022
+CapabilityBoundingSet=

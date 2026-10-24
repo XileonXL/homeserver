@@ -28,6 +28,7 @@
       - ca-certificates
       - curl
       - git
+      - nginx
       - openssh-client
       - sudo
       - tzdata
@@ -214,7 +215,7 @@
       become_user: "{{ bidsenseai_extractor_user }}"
 
     # uv reports "Installed" or "Uninstalled" only when the environment changes.
-    - name: Install the doc-extractor dependencies
+    - name: Install the doc-extractor and adjudication-model dependencies
       ansible.builtin.command:
         argv:
           - /usr/local/bin/uv
@@ -225,6 +226,8 @@
           - "{{ bidsenseai_extractor_python_version }}"
           - --package
           - doc-extractor
+          - --package
+          - adjudication-model
       args:
         chdir: "{{ bidsenseai_extractor_repo_dir }}"
       environment:
@@ -233,6 +236,14 @@
       become_user: "{{ bidsenseai_extractor_user }}"
       register: bidsenseai_extractor_sync
       changed_when: "'Installed' in bidsenseai_extractor_sync.stderr or 'Uninstalled' in bidsenseai_extractor_sync.stderr"
+
+    - name: Create the site directory
+      ansible.builtin.file:
+        path: "{{ bidsenseai_extractor_site_root }}"
+        state: directory
+        owner: "{{ bidsenseai_extractor_user }}"
+        group: "{{ bidsenseai_extractor_user }}"
+        mode: "0755"
 
     - name: Install the systemd units
       ansible.builtin.template:
@@ -244,10 +255,19 @@
       loop:
         - bidsenseai-extractor.service
         - bidsenseai-extractor.timer
-        - bidsenseai-extractor-alert.service
+        - bidsenseai-extractor-alert@.service
+        - bidsenseai-extractor-site.service
+        - bidsenseai-extractor-site.timer
       notify:
         - Reload systemd
         - Restart extractor timer
+        - Restart site timer
+
+    - name: Remove the old non-template alert unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/bidsenseai-extractor-alert.service
+        state: absent
+      notify: Reload systemd
 
     - name: Load the new units
       ansible.builtin.meta: flush_handlers
@@ -259,3 +279,32 @@
         state: started
         enabled: true
       when: not ansible_check_mode
+
+    - name: Enable and start the site timer
+      ansible.builtin.systemd:
+        name: bidsenseai-extractor-site.timer
+        state: started
+        enabled: true
+      when: not ansible_check_mode
+
+- name: Serve the site to the reverse proxy
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: /etc/nginx/conf.d/bidsenseai.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Remove the default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Enable and start nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+  when: not ansible_check_mode

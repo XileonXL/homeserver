@@ -141,7 +141,8 @@ status check are removed so nothing links to or alerts on a guest that is off. S
 
 `bidsenseai-extractor` (vm_id 180, `192.168.1.80`) runs the nightly document extraction of
 another project. It is not a service of the house, so it stays out of the consecutive
-numbering of the others and is not published by the proxy, the DNS or the status page.
+numbering of the others and is not on the status page. Only its static site
+(`bidsenseai.homeserver.lan`) is published by the proxy and the DNS.
 
 It is temporary and does not belong in this repository long term. To remove it, delete its
 entry in `opentofu/envs/homeserver/variables.tf`, its group in `ansible/inventory/hosts.yml`,

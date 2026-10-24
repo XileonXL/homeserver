@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Send a Telegram message that the extraction failed. Reads TELEGRAM_BOT_TOKEN and
+# Send a Telegram message that a unit failed. Usage: bidsenseai-extractor-alert <unit>. Reads TELEGRAM_BOT_TOKEN and
 # TELEGRAM_CHAT_ID from the environment (systemd EnvironmentFile).
 set -euo pipefail
 
 readonly API_URL="https://api.telegram.org"
 
 main() {
+  : "${1:?usage: ${0##*/} <unit>}"
+  local unit="$1"
+  [[ "${unit}" == *.* ]] || unit="${unit}.service"
   : "${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is not set}"
   : "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is not set}"
 
   local text
-  text="$(hostname): bidsenseai-extractor.service failed. Run: journalctl -u bidsenseai-extractor.service -n 100"
+  text="$(hostname): ${unit} failed. Run: journalctl -u ${unit} -n 100"
 
   # The token goes to curl on stdin so it never shows in the process list.
   if ! printf 'url = "%s/bot%s/sendMessage"\n' "${API_URL}" "${TELEGRAM_BOT_TOKEN}" \

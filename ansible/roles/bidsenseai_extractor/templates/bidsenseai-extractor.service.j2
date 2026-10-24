@@ -3,7 +3,7 @@
 Description=BidSense AI document extraction
 Wants=network-online.target
 After=network-online.target
-OnFailure=bidsenseai-extractor-alert.service
+OnFailure=bidsenseai-extractor-alert@%n.service
 
 [Service]
 Type=oneshot

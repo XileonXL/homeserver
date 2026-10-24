@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+server {
+	listen {{ ansible_host }}:{{ bidsenseai_extractor_site_port }} default_server;
+	server_name _;
+	root {{ bidsenseai_extractor_site_root }}/site;
+	index index.html;
+
+	# Only the central Caddy reaches this server.
+	allow {{ bidsenseai_extractor_site_allow }};
+	deny all;
+
+	location / {
+		try_files $uri $uri/ =404;
+	}
+}
