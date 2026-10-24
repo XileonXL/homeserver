@@ -148,16 +148,18 @@ Manual steps in the Tailscale admin console:
    nothing outbound from the tag. SSH to Caddy goes through `pve`, not its tailnet address.
 
    ```json
-   "tagOwners": {"tag:homeserver": ["autogroup:admin"]},
+   "tagOwners": {"tag:homeserver": ["autogroup:admin"], "tag:homeserver-host": ["autogroup:admin"]},
    "grants": [
      {"src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"]},
      {"src": ["autogroup:member"], "dst": ["tag:homeserver"], "ip": ["tcp:80", "tcp:443", "tcp:53", "udp:53"]},
+     {"src": ["autogroup:member"], "dst": ["tag:homeserver-host"], "ip": ["*"]},
      {"src": ["autogroup:member"], "dst": ["192.168.1.0/24"], "ip": ["*"]}
    ]
    ```
 
-   These replace the default allow-all grant. Do not add a rule with the tag as `src`. The Proxmox host joins with an untagged key
-   so it keeps normal access for your devices.
+   These replace the default allow-all grant. Do not add a rule with a tag as `src`. The Proxmox host carries both
+   `tag:homeserver` and `tag:homeserver-host`: the second keeps full access from your devices (SSH, the web UI on 8006), which
+   `tag:homeserver` alone would cut to HTTPS and DNS.
 
 ## Monitoring
 
