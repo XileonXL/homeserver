@@ -48,6 +48,8 @@ main() {
   fi
 
   local result before after
+  # systemd and Ansible start in /; git needs the repository as working directory.
+  cd "${REPO_DIR}"
   result="$(
     setpriv --reuid "${SERVICE_USER}" --regid "${SERVICE_USER}" --init-groups -- \
       env HOME="${SERVICE_HOME}" \

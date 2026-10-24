@@ -243,7 +243,10 @@
     - name: Update the repository and restart the bot
       ansible.builtin.command: /usr/local/sbin/hiresignalai-update
       register: hiresignalai_update
-      changed_when: (hiresignalai_update.stdout_lines | last).split()[1] != (hiresignalai_update.stdout_lines | last).split()[2]
+      changed_when: >-
+        hiresignalai_update.rc == 0
+        and (hiresignalai_update.stdout_lines | last).split()[1]
+        != (hiresignalai_update.stdout_lines | last).split()[2]
       when: not ansible_check_mode
 
     - name: Install the systemd units
