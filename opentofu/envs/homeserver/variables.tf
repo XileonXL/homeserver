@@ -92,8 +92,8 @@ variable "containers" {
     # HireSignal AI (Python app, claude CLI, typst). Not part of the house: outside the
     # consecutive numbering on purpose.
     hiresignalai = {
-      vm_id  = 181
-      ip     = "192.168.1.81"
+      vm_id  = 190
+      ip     = "192.168.1.90"
       cores  = 1
       memory = 2048
       swap   = 512
