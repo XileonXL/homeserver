@@ -215,6 +215,10 @@
         - { path: .ssh, mode: "0700" }
         - { path: .aws, mode: "0700" }
         - { path: .cache, mode: "0700" }
+        - { path: .cache/bidsenseai-lock, mode: "0700" }
+        - { path: .local, mode: "0700" }
+        - { path: .local/share, mode: "0700" }
+        - { path: .local/share/uv, mode: "0700" }
 
     - name: Deploy the GitHub deploy key
       ansible.builtin.copy:

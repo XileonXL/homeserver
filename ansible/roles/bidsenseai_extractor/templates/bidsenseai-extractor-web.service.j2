@@ -12,14 +12,14 @@ Group={{ bidsenseai_extractor_user }}
 Environment=HOME={{ bidsenseai_extractor_home }}
 EnvironmentFile={{ bidsenseai_extractor_config_dir }}/env
 WorkingDirectory={{ bidsenseai_extractor_repo_dir }}
-ExecStartPre=/usr/bin/install -d -m 0700 {{ bidsenseai_extractor_web_work_dir }}
-ExecStart=/usr/local/sbin/bidsenseai-extractor-web {{ bidsenseai_extractor_repo_dir }} {{ bidsenseai_extractor_web_work_dir }} {{ bidsenseai_extractor_web_province }} {{ bidsenseai_extractor_web_key_file }} {{ bidsenseai_extractor_web_known_hosts }} {{ bidsenseai_extractor_web_deploy_user }}@{{ bidsenseai_extractor_web_host }}
+ExecStartPre=/usr/bin/install -d -m 0700 {{ bidsenseai_extractor_web_work_dir }} {{ bidsenseai_extractor_lock_file | dirname }}
+ExecStart=/usr/local/sbin/bidsenseai-extractor-web {{ bidsenseai_extractor_repo_dir }} {{ bidsenseai_extractor_web_work_dir }} {{ bidsenseai_extractor_web_province }} {{ bidsenseai_extractor_web_key_file }} {{ bidsenseai_extractor_web_known_hosts }} {{ bidsenseai_extractor_web_deploy_user }}@{{ bidsenseai_extractor_web_host }} {{ bidsenseai_extractor_home }}/.ssh/deploy_key {{ bidsenseai_extractor_home }}/.ssh/known_hosts {{ bidsenseai_extractor_repo_ref }} {{ bidsenseai_extractor_python_version }} {{ bidsenseai_extractor_lock_file }}
 TimeoutStartSec={{ bidsenseai_extractor_web_timeout }}
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-# node_modules and dist are written in the checkout's web/.
-ReadWritePaths={{ bidsenseai_extractor_home }}/.cache {{ bidsenseai_extractor_repo_dir }}/web
+# The script updates the whole checkout (.git, .venv, uv.lock) and uv may install a Python.
+ReadWritePaths={{ bidsenseai_extractor_home }}/.cache {{ bidsenseai_extractor_repo_dir }} {{ bidsenseai_extractor_home }}/.local/share/uv
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true

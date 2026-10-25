@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Export the data, build the Astro site and publish it to the web guest.
+# Update the checkout to origin/<ref>, export the data, build the Astro site and publish it to the web guest.
+# The update (fetch, reset, uv sync when a lock file or pyproject changed since the last successful sync) runs under the lock shared with
+# the nightly extractor, so a reset never happens under a running extraction. A failed fetch (network)
+# or a lock not obtained in time only warns and keeps the current checkout; a failed reset or sync fails.
 # Skips the build and publish when the exported data (ignoring generated_at) and the repo commit
 # match the last successful publish on the same day (Europe/Madrid).
-# Usage: bidsenseai-extractor-web <repo dir> <work dir> <provinces, comma-separated> <ssh key> <known hosts> <user@host>
+# Usage: bidsenseai-extractor-web <repo dir> <work dir> <provinces, comma-separated> <ssh key> <known hosts> <user@host> <deploy key> <github known hosts> <ref> <python version> <lock file>
 # AWS and database settings come from the environment (systemd EnvironmentFile).
 set -euo pipefail
 
@@ -24,13 +27,65 @@ print(digest.hexdigest())
 ' "$1"
 }
 
+# Fast-forward the checkout to origin/<ref> with the read-only deploy key, as the Ansible git task does.
+update_checkout() {
+  local repo="$1" key="$2" known_hosts="$3" ref="$4" python="$5" lock="$6" marker="$7"
+  local lock_fd new base changed need_sync=1
+
+  # Held until the function returns; the descriptor is closed on every path before the long build.
+  exec {lock_fd}>>"${lock}"
+  if ! flock --timeout 600 "${lock_fd}"; then
+    printf 'warning: lock %s busy, building with the current checkout\n' "${lock}" >&2
+    exec {lock_fd}>&-
+    return 0
+  fi
+
+  if ! GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -i ${key} -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${known_hosts} -o ConnectTimeout=30" \
+    git -C "${repo}" fetch --quiet origin; then
+    printf 'warning: git fetch failed, building with the current checkout\n' >&2
+    exec {lock_fd}>&-
+    return 0
+  fi
+  git -C "${repo}" reset --hard --quiet "origin/${ref}" || {
+    printf '[ERROR] git reset to origin/%s failed in %s\n' "${ref}" "${repo}" >&2
+    return 1
+  }
+  new="$(git -C "${repo}" rev-parse HEAD)"
+
+  # The marker holds the last commit whose sync succeeded, so a failed sync is retried on the next run.
+  if [[ -f "${marker}" ]]; then
+    base="$(<"${marker}")"
+    if git -C "${repo}" cat-file -e "${base}^{commit}" 2>/dev/null; then
+      need_sync=0
+      changed="$(git -C "${repo}" diff --name-only "${base}" "${new}")"
+      if grep -Eq '^uv\.lock$|(^|/)pyproject\.toml$' <<< "${changed}"; then
+        need_sync=1
+      fi
+    fi
+  fi
+  if [[ "${need_sync}" -eq 1 ]]; then
+    (cd -- "${repo}" && /usr/local/bin/uv sync --frozen --no-dev --python "${python}" \
+      --package doc-extractor --package adjudication-model) || {
+      printf '[ERROR] uv sync failed in %s\n' "${repo}" >&2
+      return 1
+    }
+  fi
+  printf '%s\n' "${new}" > "${marker}"
+  exec {lock_fd}>&-
+}
+
 main() {
-  local repo="${1:?usage: ${0##*/} <repo dir> <work dir> <province> <ssh key> <known hosts> <user@host>}"
+  local repo="${1:?usage: ${0##*/} <repo dir> <work dir> <province> <ssh key> <known hosts> <user@host> <deploy key> <github known hosts> <ref> <python version> <lock file>}"
   local work="${2:?missing work dir}"
   local provinces="${3:?missing provinces}"
   local key="${4:?missing ssh key}"
   local known_hosts="${5:?missing known hosts}"
   local target="${6:?missing user@host}"
+  local deploy_key="${7:?missing deploy key}"
+  local github_known_hosts="${8:?missing github known hosts}"
+  local ref="${9:?missing ref}"
+  local python="${10:?missing python version}"
+  local lock="${11:?missing lock file}"
 
   local data="${work}/data"
   local -a province_args=()
@@ -45,6 +100,8 @@ main() {
 
   local -a ssh_cmd=(ssh -i "${key}" -o IdentitiesOnly=yes -o BatchMode=yes
     -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${known_hosts}")
+
+  update_checkout "${repo}" "${deploy_key}" "${github_known_hosts}" "${ref}" "${python}" "${lock}" "${work}/synced.commit"
 
   rm -rf -- "${data}"
   mkdir -p -- "${data}"

@@ -12,7 +12,9 @@ Group={{ bidsenseai_extractor_user }}
 Environment=HOME={{ bidsenseai_extractor_home }}
 EnvironmentFile={{ bidsenseai_extractor_config_dir }}/env
 WorkingDirectory={{ bidsenseai_extractor_repo_dir }}
-ExecStart=/usr/local/bin/uv run --frozen --no-sync --package doc-extractor doc-extractor run --pending --limit {{ bidsenseai_extractor_limit }}
+# Same lock as the web build update: a reset of the checkout never happens under a running extraction.
+ExecStartPre=/usr/bin/install -d -m 0700 {{ bidsenseai_extractor_lock_file | dirname }}
+ExecStart=/usr/bin/flock {{ bidsenseai_extractor_lock_file }} /usr/local/bin/uv run --frozen --no-sync --package doc-extractor doc-extractor run --pending --limit {{ bidsenseai_extractor_limit }}
 TimeoutStartSec={{ bidsenseai_extractor_timeout }}
 NoNewPrivileges=true
 PrivateTmp=true

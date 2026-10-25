@@ -4,10 +4,13 @@ bidsenseai_extractor_home: /var/lib/extractor
 bidsenseai_extractor_config_dir: /etc/bidsenseai-extractor
 
 # Private repository, read over SSH with a read-only deploy key. Tracks main: each run of
-# the play deploys the latest pushed main.
+# the play deploys the latest pushed main; the web build also updates the checkout to it by itself.
 bidsenseai_extractor_repo_url: git@github.com:XileonXL/bidsenseai.git
 bidsenseai_extractor_repo_ref: main
 bidsenseai_extractor_repo_dir: "{{ bidsenseai_extractor_home }}/bidsenseai"
+# Taken (flock) by the nightly extractor for its whole run and by the web build while it updates
+# the checkout. The directory is created by the role and by ExecStartPre in both units, inside the .cache ReadWritePaths.
+bidsenseai_extractor_lock_file: "{{ bidsenseai_extractor_home }}/.cache/bidsenseai-lock/checkout.lock"
 
 # Local path on the controller of the deploy key's private half (see .env.example).
 bidsenseai_extractor_deploy_key_file: "{{ lookup('ansible.builtin.env', 'BIDSENSEAI_EXTRACTOR_DEPLOY_KEY_FILE') }}"

@@ -8,11 +8,21 @@ Runs `doc-extractor run --pending` from the private BidSense AI repository every
 credentials from IAM Roles Anywhere (`aws_signing_helper` as `credential_process`).
 
 - Repository: checked out over SSH with a read-only deploy key, tracking `main`
-  (`bidsenseai_extractor_repo_ref`). Re-run the play to deploy the latest pushed `main`.
+  (`bidsenseai_extractor_repo_ref`). A push to `main` is enough: the web build updates the checkout
+  itself (see Web). The play is for configuration changes only.
 - Tools at pinned versions with checksums: uv, Claude Code, `aws_signing_helper`.
 - Configuration in `/etc/bidsenseai-extractor/` (`env`, `alerts.env`, certificate and key).
 - Web: `bidsenseai-extractor-web.timer` runs at 07:00 Europe/Madrid, after the 06:30 score Lambda.
-  `/usr/local/sbin/bidsenseai-extractor-web` exports the data (`adjudication-model web-export
+  `/usr/local/sbin/bidsenseai-extractor-web` first updates the checkout (`git fetch` and
+  `git reset --hard origin/<ref>` with the deploy key and the pinned GitHub host key, as the
+  Ansible git task) and runs the role's `uv sync` only when `uv.lock` or a `pyproject.toml` changed
+  since the last successful sync (commit kept in `synced.commit` in the work dir, written only after
+  a successful sync, so a failed sync is retried; no marker means sync once). Both the update and the nightly extractor run hold the flock on
+  `bidsenseai_extractor_lock_file` (`~/.cache/checkout.lock`): the nightly unit wraps its
+  `ExecStart` in `flock` for the whole run, so a reset never happens under a running extraction;
+  the update waits up to 10 minutes for it. A failed fetch or a busy lock only prints a warning and
+  the build continues with the current checkout; a failed reset or sync fails the unit (alert).
+  Then it exports the data (`adjudication-model web-export
   --province 28`), runs `npm ci --ignore-scripts` and `npm run build` in the checkout's `web/`
   (Node.js from the pinned official tarball, without the Claude token in the environment),
   skips the build and publish (prints "unchanged") when the exported data, ignoring `generated_at`, the checkout's commit and the Europe/Madrid date (the site renders relative dates at build time) equal the fingerprint in `published.stamp` in the work dir, written only after a successful publish; otherwise uploads `dist/` with compressed rsync (`-z`) to `releases/<UTC timestamp>/` on the `bidsenseai_web` guest and
