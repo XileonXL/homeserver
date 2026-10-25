@@ -23,6 +23,9 @@ readonly LOCK_WAIT="1800"
 readonly LOCKED_STEP='
 ref="$1"
 python="$2"
+# systemd and Ansible start in /; git needs the repository as working directory. The cd runs here,
+# as the service user, because root in the unit has no DAC capabilities to enter the 0700 home.
+cd "$3"
 before="$(git rev-parse HEAD)"
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "The working tree has uncommitted changes; refusing to update" >&2
@@ -48,13 +51,11 @@ main() {
   fi
 
   local result before after
-  # systemd and Ansible start in /; git needs the repository as working directory.
-  cd "${REPO_DIR}"
   result="$(
     setpriv --reuid "${SERVICE_USER}" --regid "${SERVICE_USER}" --init-groups -- \
       env HOME="${SERVICE_HOME}" \
       flock --wait "${LOCK_WAIT}" "${REPO_DIR}/data/.jobs.lock" \
-      /bin/bash -euc "${LOCKED_STEP}" _ "${REPO_REF}" "${PYTHON_VERSION}" \
+      /bin/bash -euc "${LOCKED_STEP}" _ "${REPO_REF}" "${PYTHON_VERSION}" "${REPO_DIR}" \
       | tail -n 1
   )"
   read -r before after <<<"${result}"
