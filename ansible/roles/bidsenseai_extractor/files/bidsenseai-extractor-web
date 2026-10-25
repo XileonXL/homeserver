@@ -1,8 +1,28 @@
 #!/usr/bin/env bash
 # Export the data, build the Astro site and publish it to the web guest.
+# Skips the build and publish when the exported data (ignoring generated_at) and the repo commit
+# match the last successful publish on the same day (Europe/Madrid).
 # Usage: bidsenseai-extractor-web <repo dir> <work dir> <provinces, comma-separated> <ssh key> <known hosts> <user@host>
 # AWS and database settings come from the environment (systemd EnvironmentFile).
 set -euo pipefail
+
+# sha256 of every exported file in sorted path order, with the per-run generated_at removed.
+data_fingerprint() {
+  /usr/local/bin/uv run --frozen --no-sync python -I -c '
+import hashlib, json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    data = path.read_bytes()
+    if path.suffix == ".json":
+        doc = json.loads(data)
+        if isinstance(doc, dict):
+            doc.pop("generated_at", None)
+        data = json.dumps(doc, sort_keys=True).encode()
+    digest.update(str(path.relative_to(root)).encode() + b"\0" + data + b"\0")
+print(digest.hexdigest())
+' "$1"
+}
 
 main() {
   local repo="${1:?usage: ${0##*/} <repo dir> <work dir> <province> <ssh key> <known hosts> <user@host>}"
@@ -32,6 +52,14 @@ main() {
   /usr/local/bin/uv run --frozen --no-sync --package adjudication-model \
     adjudication-model web-export --out "${data}" "${province_args[@]}"
 
+  local fingerprint stamp="${work}/published.stamp"
+  # The date is included because the site renders relative dates ("ends tomorrow") at build time.
+  fingerprint="$(data_fingerprint "${data}")-$(git -C "${repo}" rev-parse HEAD)-$(TZ=Europe/Madrid date +%F)"
+  if [[ -f "${stamp}" && "$(<"${stamp}")" == "${fingerprint}" ]]; then
+    printf 'unchanged, skipping build and publish\n'
+    return 0
+  fi
+
   # npm never sees the Claude token, and dependency install scripts do not run.
   cd -- "${repo}/web"
   export ASTRO_TELEMETRY_DISABLED=1 BIDSENSE_DATA_DIR="${data}" npm_config_cache="${work}/npm"
@@ -39,8 +67,9 @@ main() {
   env -u CLAUDE_CODE_OAUTH_TOKEN npm run build
 
   # The key only allows write-only rsync into the releases directory and the switch command.
-  rsync -rt --chmod=D755,F644 -e "${ssh_cmd[*]}" dist/ "${target}:${release}/"
+  rsync -rtz --chmod=D755,F644 -e "${ssh_cmd[*]}" dist/ "${target}:${release}/"
   "${ssh_cmd[@]}" "${target}" "switch ${release}"
+  printf '%s\n' "${fingerprint}" > "${stamp}"
   printf 'published release %s\n' "${release}"
 }
 
