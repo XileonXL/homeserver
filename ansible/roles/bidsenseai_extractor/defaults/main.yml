@@ -54,10 +54,10 @@ bidsenseai_extractor_doc_types: charges_certificate
 bidsenseai_extractor_provinces: "01,02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52"
 
 # Documents per run.
-bidsenseai_extractor_limit: 10
+bidsenseai_extractor_limit: 50
 bidsenseai_extractor_timer_calendar: "*-*-* 02:30:00 Europe/Madrid"
 # Upper bound for one run; each document may take up to 900 s.
-bidsenseai_extractor_timeout: 3h
+bidsenseai_extractor_timeout: 4h
 
 # Static site of open lots: after the 06:30 Europe/Madrid score (a Lambda in the BidSense AI
 # infra) the data is exported, the Astro site in web/ is built, and the result is uploaded to the
