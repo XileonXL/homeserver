@@ -29,10 +29,8 @@
       - curl
       - git
       - openssh-client
-      - rsync
       - sudo
       - tzdata
-      - xz-utils
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -56,7 +54,6 @@
   loop:
     - /opt/uv/{{ bidsenseai_extractor_uv_version }}
     - /opt/claude/{{ bidsenseai_extractor_claude_version }}
-    - /opt/node/{{ bidsenseai_extractor_node_version }}
 
 - name: Download uv
   ansible.builtin.get_url:
@@ -85,38 +82,6 @@
     src: /opt/uv/{{ bidsenseai_extractor_uv_version }}/uv
     dest: /usr/local/bin/uv
     state: link
-
-- name: Download Node.js
-  ansible.builtin.get_url:
-    url: "https://nodejs.org/dist/v{{ bidsenseai_extractor_node_version }}/node-v{{ bidsenseai_extractor_node_version }}-linux-x64.tar.xz"
-    dest: /opt/node/{{ bidsenseai_extractor_node_version }}.tar.xz
-    checksum: "sha256:{{ bidsenseai_extractor_node_checksum }}"
-    owner: root
-    group: root
-    mode: "0644"
-
-# The archive has one top-level directory, which is stripped.
-- name: Unpack Node.js
-  ansible.builtin.unarchive:
-    src: /opt/node/{{ bidsenseai_extractor_node_version }}.tar.xz
-    dest: /opt/node/{{ bidsenseai_extractor_node_version }}
-    remote_src: true
-    owner: root
-    group: root
-    extra_opts:
-      - --strip-components=1
-    creates: /opt/node/{{ bidsenseai_extractor_node_version }}/bin/node
-  when: not ansible_check_mode
-
-- name: Link Node.js into the path
-  ansible.builtin.file:
-    src: /opt/node/{{ bidsenseai_extractor_node_version }}/bin/{{ item }}
-    dest: /usr/local/bin/{{ item }}
-    state: link
-  loop:
-    - node
-    - npm
-    - npx
 
 - name: Download Claude Code
   ansible.builtin.get_url:
@@ -159,10 +124,10 @@
     mode: "0600"
   no_log: true
 
-- name: Install the web build script
+- name: Install the checkout update script
   ansible.builtin.copy:
-    src: bidsenseai-extractor-web
-    dest: /usr/local/sbin/bidsenseai-extractor-web
+    src: bidsenseai-extractor-update
+    dest: /usr/local/sbin/bidsenseai-extractor-update
     owner: root
     group: root
     mode: "0755"
@@ -261,7 +226,7 @@
       become_user: "{{ bidsenseai_extractor_user }}"
 
     # uv reports "Installed" or "Uninstalled" only when the environment changes.
-    - name: Install the doc-extractor and adjudication-model dependencies
+    - name: Install the doc-extractor dependencies
       ansible.builtin.command:
         argv:
           - /usr/local/bin/uv
@@ -272,8 +237,6 @@
           - "{{ bidsenseai_extractor_python_version }}"
           - --package
           - doc-extractor
-          - --package
-          - adjudication-model
       args:
         chdir: "{{ bidsenseai_extractor_repo_dir }}"
       environment:
@@ -282,32 +245,6 @@
       become_user: "{{ bidsenseai_extractor_user }}"
       register: bidsenseai_extractor_sync
       changed_when: "'Installed' in bidsenseai_extractor_sync.stderr or 'Uninstalled' in bidsenseai_extractor_sync.stderr"
-
-    # Idempotent: the key is generated once and kept.
-    - name: Generate the web deploy key
-      ansible.builtin.user:
-        name: "{{ bidsenseai_extractor_user }}"
-        generate_ssh_key: true
-        ssh_key_type: ed25519
-        ssh_key_file: .ssh/web_deploy_key
-        ssh_key_comment: bidsenseai-extractor
-
-    # Read from the web guest's sshd, which runs from first boot. Pinned: no trust on first use.
-    - name: Read the web guest's SSH host key
-      ansible.builtin.slurp:
-        src: /etc/ssh/ssh_host_ed25519_key.pub
-      delegate_to: "{{ groups['bidsenseai_web'] | first }}"
-      register: bidsenseai_extractor_web_host_key
-      when: not ansible_check_mode
-
-    - name: Pin the web guest's SSH host key
-      ansible.builtin.copy:
-        content: "{{ bidsenseai_extractor_web_host }} {{ (bidsenseai_extractor_web_host_key.content | b64decode).split(' ')[:2] | join(' ') }}\n"
-        dest: "{{ bidsenseai_extractor_web_known_hosts }}"
-        owner: "{{ bidsenseai_extractor_user }}"
-        group: "{{ bidsenseai_extractor_user }}"
-        mode: "0644"
-      when: not ansible_check_mode
 
     - name: Install the systemd units
       ansible.builtin.template:
@@ -320,12 +257,9 @@
         - bidsenseai-extractor.service
         - bidsenseai-extractor.timer
         - bidsenseai-extractor-alert@.service
-        - bidsenseai-extractor-web.service
-        - bidsenseai-extractor-web.timer
       notify:
         - Reload systemd
         - Restart extractor timer
-        - Restart web timer
 
     - name: Remove the old non-template alert unit
       ansible.builtin.file:
@@ -344,12 +278,44 @@
         enabled: true
       when: not ansible_check_mode
 
-    - name: Enable and start the web timer
-      ansible.builtin.systemd:
-        name: bidsenseai-extractor-web.timer
-        state: started
-        enabled: true
-      when: not ansible_check_mode
+# The site is built by AWS CodeBuild now. The timer goes first: it must not fire while its
+# files are being removed. Not in check mode on a host that never had the units.
+- name: Look for the retired web timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/bidsenseai-extractor-web.timer
+  register: bidsenseai_extractor_old_web_timer
+
+- name: Stop and disable the retired web timer
+  ansible.builtin.systemd:
+    name: bidsenseai-extractor-web.timer
+    state: stopped
+    enabled: false
+  when: bidsenseai_extractor_old_web_timer.stat.exists and not ansible_check_mode
+
+- name: Remove the retired web units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - bidsenseai-extractor-web.service
+    - bidsenseai-extractor-web.timer
+  notify: Reload systemd
+
+- name: Remove the retired web build leftovers
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/sbin/bidsenseai-extractor-web
+    - /usr/local/bin/node
+    - /usr/local/bin/npm
+    - /usr/local/bin/npx
+    - /opt/node
+    - "{{ bidsenseai_extractor_home }}/.cache/bidsenseai-web"
+    - "{{ bidsenseai_extractor_home }}/.ssh/web_known_hosts"
+
+- name: Reload systemd after removing the retired units
+  ansible.builtin.meta: flush_handlers
 
 # The site moved to the bidsenseai_web guest. The units go first: the timer must not fire
 # while its files are being removed.

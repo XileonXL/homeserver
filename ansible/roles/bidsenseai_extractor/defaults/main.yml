@@ -4,12 +4,12 @@ bidsenseai_extractor_home: /var/lib/extractor
 bidsenseai_extractor_config_dir: /etc/bidsenseai-extractor
 
 # Private repository, read over SSH with a read-only deploy key. Tracks main: each run of
-# the play deploys the latest pushed main; the web build also updates the checkout to it by itself.
+# the play deploys the latest pushed main.
 bidsenseai_extractor_repo_url: git@github.com:XileonXL/bidsenseai.git
 bidsenseai_extractor_repo_ref: main
 bidsenseai_extractor_repo_dir: "{{ bidsenseai_extractor_home }}/bidsenseai"
-# Taken (flock) by the nightly extractor for its whole run and by the web build while it updates
-# the checkout. The directory is created by the role and by ExecStartPre in both units, inside the .cache ReadWritePaths.
+# Taken (flock) by the nightly extractor for its whole run. The directory is created by the role
+# and by ExecStartPre, inside the .cache ReadWritePaths.
 bidsenseai_extractor_lock_file: "{{ bidsenseai_extractor_home }}/.cache/bidsenseai-lock/checkout.lock"
 
 # Local path on the controller of the deploy key's private half (see .env.example).
@@ -58,24 +58,6 @@ bidsenseai_extractor_limit: 150
 bidsenseai_extractor_timer_calendar: "*-*-* 02:30:00 Europe/Madrid"
 # Upper bound for one run; each document may take up to 900 s.
 bidsenseai_extractor_timeout: 4h
-
-# Static site of open lots: after the 06:30 Europe/Madrid score (a Lambda in the BidSense AI
-# infra) the data is exported, the Astro site in web/ is built, and the result is uploaded to the
-# bidsenseai_web guest, which only serves files. The key pair is generated here; the web guest
-# restricts it to uploads into its releases directory and the symlink switch.
-bidsenseai_extractor_web_province: "{{ bidsenseai_extractor_provinces }}"
-bidsenseai_extractor_web_timer_calendar: "*-*-* 07:00:00 Europe/Madrid"
-bidsenseai_extractor_web_timeout: 20min
-bidsenseai_extractor_web_work_dir: "{{ bidsenseai_extractor_home }}/.cache/bidsenseai-web"
-bidsenseai_extractor_web_key_file: "{{ bidsenseai_extractor_home }}/.ssh/web_deploy_key"
-bidsenseai_extractor_web_known_hosts: "{{ bidsenseai_extractor_home }}/.ssh/web_known_hosts"
-bidsenseai_extractor_web_host: "{{ hostvars[groups['bidsenseai_web'] | first].ansible_host }}"
-bidsenseai_extractor_web_deploy_user: deploy
-
-# Node.js LTS for the web build, official tarball, x86_64 Linux, sha256 from SHASUMS256.txt.
-# Must satisfy web/package.json engines.
-bidsenseai_extractor_node_version: 24.22.1
-bidsenseai_extractor_node_checksum: 6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
 
 # Failure alerts reuse the bot of the alerts role.
 bidsenseai_extractor_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"

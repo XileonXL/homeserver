@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Update the checkout to origin/<ref> with the read-only deploy key, as the Ansible git task does,
+# and run uv sync when uv.lock or a pyproject.toml changed since the last successful sync.
+# Any failure exits non-zero so the calling unit fails (and alerts) instead of running stale code.
+# The caller holds the checkout lock (flock) for the whole run.
+# Usage: bidsenseai-extractor-update <repo dir> <deploy key> <known hosts> <ref> <python version> <marker file>
+set -euo pipefail
+
+main() {
+  local repo="${1:?usage: ${0##*/} <repo dir> <deploy key> <known hosts> <ref> <python version> <marker file>}"
+  local key="${2:?missing deploy key}"
+  local known_hosts="${3:?missing known hosts}"
+  local ref="${4:?missing ref}"
+  local python="${5:?missing python version}"
+  local marker="${6:?missing marker file}"
+  local new base changed need_sync=1
+
+  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -i ${key} -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${known_hosts} -o ConnectTimeout=30" \
+    git -C "${repo}" fetch --quiet origin
+  git -C "${repo}" reset --hard --quiet "origin/${ref}"
+  new="$(git -C "${repo}" rev-parse HEAD)"
+
+  # The marker holds the last commit whose sync succeeded, so a failed sync is retried on the next run.
+  if [[ -f "${marker}" ]]; then
+    base="$(<"${marker}")"
+    if git -C "${repo}" cat-file -e "${base}^{commit}" 2>/dev/null; then
+      need_sync=0
+      changed="$(git -C "${repo}" diff --name-only "${base}" "${new}")"
+      if grep -Eq '^uv\.lock$|(^|/)pyproject\.toml$' <<< "${changed}"; then
+        need_sync=1
+      fi
+    fi
+  fi
+  if [[ "${need_sync}" -eq 1 ]]; then
+    (cd -- "${repo}" && /usr/local/bin/uv sync --frozen --no-dev --python "${python}" --package doc-extractor)
+  fi
+  printf '%s\n' "${new}" > "${marker}"
+}
+
+main "$@"

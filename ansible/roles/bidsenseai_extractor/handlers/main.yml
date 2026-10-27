@@ -9,10 +9,3 @@
     name: bidsenseai-extractor.timer
     state: restarted
   when: not ansible_check_mode
-
-# Skipped in check mode: the timer unit does not exist yet on a fresh host.
-- name: Restart web timer
-  ansible.builtin.systemd:
-    name: bidsenseai-extractor-web.timer
-    state: restarted
-  when: not ansible_check_mode
