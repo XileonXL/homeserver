@@ -23,3 +23,10 @@
     name: hiresignalai-bot.service
     state: restarted
   when: not ansible_check_mode
+
+# Skipped in check mode: the unit does not exist yet on a fresh host.
+- name: Restart web
+  ansible.builtin.systemd:
+    name: hiresignalai-web.service
+    state: restarted
+  when: not ansible_check_mode

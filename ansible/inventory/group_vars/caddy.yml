@@ -39,3 +39,7 @@ caddy_sites:
     title: BidSense AI
     icon: fas fa-gavel
     upstream: http://192.168.1.81:8080
+  - name: hiresignalai.homeserver.lan
+    title: HireSignal AI
+    icon: fas fa-briefcase
+    upstream: http://192.168.1.85:8080

@@ -51,3 +51,20 @@ hiresignalai_update_timeout: 1h
 # Failure alerts reuse the bot of the alerts role.
 hiresignalai_alert_telegram_bot_token: "{{ lookup('ansible.builtin.env', 'TELEGRAM_BOT_TOKEN') }}"
 hiresignalai_alert_telegram_chat_id: "{{ lookup('ansible.builtin.env', 'TELEGRAM_CHAT_ID') }}"
+
+# Dashboard (`jobsearch web`), published by the caddy guest and reachable on the home LAN and
+# the tailnet. It binds to the guest address so Caddy can reach it (and so it also answers
+# directly on the LAN); only the names in hiresignalai_web_allowed_hosts are accepted as Host.
+hiresignalai_web_host: "{{ ansible_host }}"
+hiresignalai_web_port: 8080
+hiresignalai_web_allowed_hosts:
+  - hiresignalai.homeserver.lan
+# Origin of the browser extension allowed to call /api.
+hiresignalai_web_extension_origin: chrome-extension://cebeaahfcmbjhohkpbalflfkilajekmg
+# API token (16 or more of A-Z a-z 0-9 + / = _ -), from the controller environment variable
+# HIRESIGNALAI_DASHBOARD_TOKEN (see .env.example). Written to the web unit's own env file.
+hiresignalai_web_token: "{{ lookup('ansible.builtin.env', 'HIRESIGNALAI_DASHBOARD_TOKEN') }}"
+# Raw text appended to the `jobsearch web` command line, for example another flag of the command
+# (for instance to leave job running to the bot only). systemd splits it on whitespace and
+# expands % and $ specifiers, so it must not contain quotes or those characters.
+hiresignalai_web_extra_args: ""

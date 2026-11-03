@@ -8,9 +8,11 @@
       - hiresignalai_telegram_chat_id | length > 0
       - hiresignalai_alert_telegram_bot_token | length > 0
       - hiresignalai_alert_telegram_chat_id | length > 0
+      - hiresignalai_web_token is match('^[A-Za-z0-9+/=_-]{16,}$')
     fail_msg: >-
       HIRESIGNALAI_DEPLOY_KEY_FILE, HIRESIGNALAI_TELEGRAM_BOT_TOKEN, HIRESIGNALAI_TELEGRAM_CHAT_ID,
-      CLAUDE_CODE_OAUTH_TOKEN, TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty. Fill in .env
+      HIRESIGNALAI_DASHBOARD_TOKEN (16 or more of A-Z a-z 0-9 + / = _ -), CLAUDE_CODE_OAUTH_TOKEN,
+      TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty or invalid. Fill in .env
       (see .env.example) and load it.
     quiet: true
   when: not ansible_check_mode
@@ -155,6 +157,16 @@
     group: root
     mode: "0755"
 
+- name: Write the web dashboard environment file
+  ansible.builtin.template:
+    src: web.env.j2
+    dest: "{{ hiresignalai_config_dir }}/web.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart web
+
 - name: Write the environment file
   ansible.builtin.template:
     src: env.j2
@@ -163,7 +175,9 @@
     group: root
     mode: "0600"
   no_log: true
-  notify: Restart bot
+  notify:
+    - Restart bot
+    - Restart web
 
 # The user does not exist in check mode on a fresh host, so everything that
 # names it as an owner is skipped there.
@@ -239,8 +253,8 @@
         quiet: true
 
     # The script updates the repository and syncs the dependencies as the service user under the
-    # app's lock, and restarts the bot when HEAD changed. Its last line is "HEAD <before> <after>".
-    - name: Update the repository and restart the bot
+    # app's lock, and restarts the bot and the dashboard when HEAD changed. Its last line is "HEAD <before> <after>".
+    - name: Update the repository and restart the bot and the dashboard
       ansible.builtin.command: /usr/local/sbin/hiresignalai-update
       register: hiresignalai_update
       changed_when: >-
@@ -262,12 +276,14 @@
         - hiresignalai-update.service
         - hiresignalai-update.timer
         - hiresignalai-bot.service
+        - hiresignalai-web.service
         - hiresignalai-alert@.service
       notify:
         - Reload systemd
         - Restart daily timer
         - Restart update timer
         - Restart bot
+        - Restart web
 
     - name: Load the new units
       ansible.builtin.meta: flush_handlers
@@ -290,6 +306,13 @@
     - name: Enable and start the bot
       ansible.builtin.systemd:
         name: hiresignalai-bot.service
+        state: started
+        enabled: true
+      when: not ansible_check_mode
+
+    - name: Enable and start the dashboard
+      ansible.builtin.systemd:
+        name: hiresignalai-web.service
         state: started
         enabled: true
       when: not ansible_check_mode

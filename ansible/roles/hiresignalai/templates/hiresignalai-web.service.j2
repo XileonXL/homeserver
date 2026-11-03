@@ -1,0 +1,48 @@
+# {{ ansible_managed }}
+[Unit]
+Description=HireSignal AI web dashboard
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=hiresignalai-alert@%n.service
+
+[Service]
+Type=simple
+User={{ hiresignalai_user }}
+Group={{ hiresignalai_user }}
+Environment=HOME={{ hiresignalai_home }}
+EnvironmentFile={{ hiresignalai_config_dir }}/env
+EnvironmentFile={{ hiresignalai_config_dir }}/web.env
+WorkingDirectory={{ hiresignalai_repo_dir }}
+ExecStart=/usr/local/bin/uv run --frozen --no-sync jobsearch web --host {{ hiresignalai_web_host }} --port {{ hiresignalai_web_port }} --allow-writes{% for host in hiresignalai_web_allowed_hosts %} --allowed-host "{{ host }}"{% endfor %}{% if hiresignalai_web_extra_args | length > 0 %} {{ hiresignalai_web_extra_args }}{% endif %}
+
+# A stop or restart ends uv with SIGTERM (143) after the server exits cleanly; not a failure.
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths={{ hiresignalai_home }}
+ProtectHome=true
+ReadOnlyPaths={{ hiresignalai_home }}/.ssh {{ hiresignalai_home }}/.gitconfig
+ProtectKernelTunables=true
+ProtectControlGroups=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+UMask=0077
+CapabilityBoundingSet=
+# Network-facing unit. ProcSubset=pid is left out: the Claude CLI (Node.js) reads /proc/cpuinfo
+# and /proc/meminfo when it runs tailoring.
+ProtectProc=invisible
+RestrictSUIDSGID=true
+ProtectClock=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

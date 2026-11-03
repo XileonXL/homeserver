@@ -164,14 +164,35 @@ alone can be revoked.
 
 `hiresignalai` (vm_id 185, `192.168.1.85`) runs the daily job search and the Telegram bot of
 another project. Like the extractor it is not a service of the house, so it stays out of the
-consecutive numbering and neither the status page nor the DNS and proxy include it.
+consecutive numbering and the status page does not include it.
 
 It runs here and not on AWS because the Claude Code subscription runs here and the volume is
 tiny: one daily run and a bot that mostly waits. The database (`data/jobs.db`) stays in git.
 This guest is its only writer, through a deploy key with write access, so there is no merge
-to resolve. The Telegram bot uses long polling, so nothing is exposed and no proxy entry or
-port is needed. Its Telegram bot is separate from the house alerts bot; failures of its units
+to resolve. The Telegram bot uses long polling, so it exposes nothing. Its Telegram bot is separate from the house alerts bot; failures of its units
 still reach the alerts channel.
+
+The web dashboard (`hiresignalai-web.service`, `jobsearch web --allow-writes`) runs as the same
+user and is published like the other internal services: `hiresignalai.homeserver.lan` through
+Caddy (internal CA) and Pi-hole. Away from home, tailnet clients resolve every `*.homeserver.lan`
+name to Caddy's tailnet address through Caddy's own DNS and send that name as the `Host` header,
+which Caddy forwards unchanged. No public exposure and no port forwarded. The service listens on
+the guest address (`192.168.1.85:8080`) so Caddy can reach it, which also makes it reachable
+directly on the LAN; only the proxied name is accepted as `Host`, and every `/api` call needs
+the token. Writes outside `/api` need the `HX-Request` header and a same-origin `Origin`, so a
+page in the owner's browser cannot change statuses cross-site.
+
+The token (`HIRESIGNALAI_DASHBOARD_TOKEN` from `.env`, never committed) and the extension origin
+are in a separate root-owned 0600 file loaded only by the web unit. The unit still needs the
+shared environment (Claude token, Telegram, git identity) because it runs tailoring and
+publishes `data/jobs.db`. It has extra hardening because it is network-facing. A change of HEAD
+or of the environment restarts it, as for the bot. Accepted: one more process holding write
+access to `data/jobs.db`, serialised by the app's lock and SQLite busy timeout.
+
+Accepted risk: the dashboard pages have no login. Any device on the home LAN or the tailnet can
+view applications and change statuses, whether through Caddy or directly on port 8080; only the
+extension API is protected by the token. To tighten it later, bind to `127.0.0.1` and restrict
+the Caddy site with a `remote_ip` matcher for the tailnet range, or add `basic_auth`.
 
 Accepted risk: the deploy key has write access to the code repository, so it can push code to
 `main`, and the next deploy runs it. This is mitigated by Claude running without tools, the
@@ -181,7 +202,7 @@ separate data repository so the code key can be read-only, is the path if the pr
 To remove it, delete its entry in `opentofu/envs/homeserver/variables.tf`, its group in
 `ansible/inventory/hosts.yml`, its play in `ansible/site.yml`, the `hiresignalai` role, the
 `HIRESIGNALAI_*` variables in `.env.example` and `ansible/README.md`, its row in the root
-`README.md` and this section, and delete the deploy key in the repository settings.
+`README.md`, its proxy and DNS entries in `group_vars/caddy.yml` and `pihole.yml`, and this section, and delete the deploy key in the repository settings.
 
 ## BidSense AI web in its own container
 

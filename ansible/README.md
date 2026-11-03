@@ -25,7 +25,7 @@ appliance and is not managed here.
 | `prowlarr` | `media` | Installs Prowlarr from the release tarball, as a search front end for qBittorrent |
 | `bidsenseai_extractor` | `bidsenseai_extractor` | Runs the BidSense AI `doc-extractor` nightly with a Claude Code subscription and IAM Roles Anywhere, and builds the web site; see its [README](roles/bidsenseai_extractor/README.md) |
 | `bidsenseai_web` | `bidsenseai_web` | Serves the BidSense AI static site, with no credentials; see its [README](roles/bidsenseai_web/README.md) |
-| `hiresignalai` | `hiresignalai` | Runs the HireSignal AI daily job search and its Telegram bot with a Claude Code subscription; see its [README](roles/hiresignalai/README.md) |
+| `hiresignalai` | `hiresignalai` | Runs the HireSignal AI daily job search, its Telegram bot and its web dashboard with a Claude Code subscription; see its [README](roles/hiresignalai/README.md) |
 
 Hosts and addresses are in `inventory/hosts.yml`; per-group settings in
 `inventory/group_vars/`.
@@ -85,6 +85,7 @@ set -a; source ../.env; set +a
 | `HIRESIGNALAI_DEPLOY_KEY_FILE` | you | by `hiresignalai`; local path of the GitHub deploy key (write access) |
 | `HIRESIGNALAI_TELEGRAM_BOT_TOKEN`, `HIRESIGNALAI_TELEGRAM_CHAT_ID` | you | by `hiresignalai`; its own Telegram bot, distinct from the alerts bot |
 | `HIRESIGNALAI_GIT_EMAIL` | you | optional; e-mail of the service's commits |
+| `HIRESIGNALAI_DASHBOARD_TOKEN` | you | by `hiresignalai`; API token of the web dashboard (16+ characters of A-Z a-z 0-9 + / = _ -); role variable `hiresignalai_web_token` |
 
 ## Run
 

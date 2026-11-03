@@ -18,3 +18,5 @@ pihole_local_dns_records:
     ip: 192.168.1.64
   - name: bidsenseai.homeserver.lan
     ip: 192.168.1.64
+  - name: hiresignalai.homeserver.lan
+    ip: 192.168.1.64

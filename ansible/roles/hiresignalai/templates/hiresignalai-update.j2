@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
-# Update the HireSignal AI repository from origin and restart the bot when HEAD changed.
+# Update the HireSignal AI repository from origin and restart the bot and the dashboard when HEAD
+# changed.
 # Runs as root: git and uv run as the service user (setpriv), the restart needs root. Used by the
 # daily hiresignalai-update.timer and by the Ansible deploy. The last line of the output is
 # "HEAD <before> <after>".
@@ -12,7 +13,7 @@ readonly REPO_DIR="{{ hiresignalai_repo_dir }}"
 readonly REPO_REF="{{ hiresignalai_repo_ref }}"
 readonly PYTHON_VERSION="{{ hiresignalai_python_version }}"
 readonly DAILY_UNIT="hiresignalai-daily.service"
-readonly BOT_UNIT="hiresignalai-bot.service"
+readonly RESTART_UNITS=("hiresignalai-bot.service" "hiresignalai-web.service")
 readonly LOCK_WAIT="1800"
 
 # Runs as the service user under the app's lock. Fast-forwards when it can, otherwise merges (the
@@ -50,7 +51,7 @@ main() {
     return 1
   fi
 
-  local result before after
+  local result before after unit state failed=0
   result="$(
     setpriv --reuid "${SERVICE_USER}" --regid "${SERVICE_USER}" --init-groups -- \
       env HOME="${SERVICE_HOME}" \
@@ -66,13 +67,21 @@ main() {
 
   if [[ "${before}" != "${after}" ]]; then
     printf 'Old HEAD: %s\nNew HEAD: %s\n' "${before}" "${after}"
-    if systemctl cat "${BOT_UNIT}" >/dev/null 2>&1; then
-      systemctl restart "${BOT_UNIT}"
-    fi
+    # Try every unit even if one fails; the failure is reported at the end so OnFailure alerts.
+    for unit in "${RESTART_UNITS[@]}"; do
+      state="$(systemctl show -p LoadState --value "${unit}")" || state=""
+      if [[ "${state}" == "not-found" ]]; then
+        printf '%s: %s is not installed; skipping its restart\n' "${0##*/}" "${unit}" >&2
+      elif ! systemctl restart "${unit}"; then
+        printf '%s: restarting %s failed\n' "${0##*/}" "${unit}" >&2
+        failed=1
+      fi
+    done
   else
     printf 'Already up to date at %s\n' "${after}"
   fi
   printf 'HEAD %s %s\n' "${before}" "${after}"
+  return "${failed}"
 }
 
 main "$@"
