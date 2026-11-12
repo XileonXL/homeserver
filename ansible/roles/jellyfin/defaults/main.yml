@@ -16,3 +16,33 @@ jellyfin_media_path: /media
 jellyfin_library_dirs:
   - movies
   - shows
+
+# Hardware transcoding through the host GPU (VAAPI). Needs the render node passed to
+# the container (see lxc_devices), so it is off unless a site turns it on. Jellyfin's
+# own ffmpeg bundles the Intel media driver.
+jellyfin_hwaccel: false
+jellyfin_hwaccel_device: /dev/dri/renderD128
+
+# Codecs the GPU decodes; encoding is H.264 and HEVC.
+jellyfin_hwaccel_decode_codecs:
+  - h264
+  - hevc
+  - mpeg2video
+  - vc1
+  - vp8
+  - vp9
+
+# Jellyfin's encoding configuration.
+jellyfin_encoding_config: /etc/jellyfin/encoding.xml
+
+# Elements of encoding.xml this role manages. Intel low-power encoders stay off: on
+# the GPU generations this targets they need GuC/HuC firmware.
+jellyfin_encoding_options:
+  HardwareAccelerationType: vaapi
+  VaapiDevice: "{{ jellyfin_hwaccel_device }}"
+  EnableHardwareEncoding: "true"
+  AllowHevcEncoding: "true"
+  EnableDecodingColorDepth10Hevc: "true"
+  EnableDecodingColorDepth10Vp9: "true"
+  EnableIntelLowPowerH264HwEncoder: "false"
+  EnableIntelLowPowerHevcHwEncoder: "false"

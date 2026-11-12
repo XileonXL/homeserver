@@ -1,0 +1,5 @@
+  <HardwareDecodingCodecs>
+{% for codec in jellyfin_hwaccel_decode_codecs %}
+    <string>{{ codec }}</string>
+{% endfor %}
+  </HardwareDecodingCodecs>

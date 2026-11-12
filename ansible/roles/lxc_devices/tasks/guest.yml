@@ -1,0 +1,150 @@
+---
+- name: Read the container configuration
+  ansible.builtin.command:
+    argv:
+      - pct
+      - config
+      - "{{ lxc_devices_guest_id }}"
+  register: lxc_devices_config
+  changed_when: false
+  failed_when: lxc_devices_config.rc != 0 and 'does not exist' not in lxc_devices_config.stderr
+  check_mode: false
+
+- name: Skip the container while it does not exist
+  ansible.builtin.debug:
+    msg: >-
+      Container {{ lxc_devices_guest_id }} does not exist yet. Create it, then run this
+      play again.
+  when: lxc_devices_config.rc != 0
+
+- name: Read the container status
+  ansible.builtin.command:
+    argv:
+      - pct
+      - status
+      - "{{ lxc_devices_guest_id }}"
+  register: lxc_devices_status
+  changed_when: false
+  check_mode: false
+  when: lxc_devices_config.rc == 0
+
+# Read-only. Fails while the container is stopped or when it lacks the group.
+- name: Read the groups of the container
+  ansible.builtin.command:
+    argv:
+      - pct
+      - exec
+      - "{{ lxc_devices_guest_id }}"
+      - --
+      - getent
+      - group
+      - "{{ item }}"
+  loop: "{{ lxc_devices_list | selectattr('group', 'defined') | map(attribute='group') | unique | list }}"
+  register: lxc_devices_groups
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: lxc_devices_config.rc == 0
+
+- name: Skip the container when a group cannot be read
+  ansible.builtin.debug:
+    msg: >-
+      Container {{ lxc_devices_guest_id }} is stopped or lacks a group its devices need
+      ({{ lxc_devices_groups.results | rejectattr('rc', 'eq', 0) | map(attribute='item') | join(', ') }}).
+      Start it or fix it, then run this play again.
+  when:
+    - lxc_devices_config.rc == 0
+    - lxc_devices_groups.results | rejectattr('rc', 'eq', 0) | list | length > 0
+
+- name: Set the devices of the container
+  when:
+    - lxc_devices_config.rc == 0
+    - lxc_devices_groups.results | rejectattr('rc', 'eq', 0) | list | length == 0
+  block:
+    - name: Start tracking the changes
+      ansible.builtin.set_fact:
+        lxc_devices_dirty: false
+        lxc_devices_applied: []
+        lxc_devices_taken: "{{ lxc_devices_config.stdout | regex_findall('(?m)^dev(\\d+):') | map('int') | list }}"
+        lxc_devices_running: "{{ lxc_devices_status.stdout | trim == 'status: running' }}"
+
+    - name: Set each device
+      ansible.builtin.include_tasks: device.yml
+      loop: "{{ lxc_devices_list }}"
+      loop_control:
+        loop_var: lxc_devices_item
+
+    # Commands do not run in check mode; this reports the change instead.
+    - name: Report that the container would be rebooted
+      ansible.builtin.debug:
+        msg: "Would reboot container {{ lxc_devices_guest_id }}."
+      changed_when: true
+      when:
+        - ansible_check_mode
+        - lxc_devices_dirty
+        - lxc_devices_running
+
+    # A device is not hot-plugged: it appears at the next start.
+    - name: Reboot the container to apply the devices
+      ansible.builtin.command:
+        argv:
+          - pct
+          - reboot
+          - "{{ lxc_devices_guest_id }}"
+      changed_when: true
+      when:
+        - lxc_devices_dirty
+        - lxc_devices_running
+
+    # Later plays connect over SSH, which needs the container fully started.
+    - name: Wait for the container to finish booting
+      ansible.builtin.command:
+        argv:
+          - pct
+          - exec
+          - "{{ lxc_devices_guest_id }}"
+          - --
+          - systemctl
+          - is-system-running
+          - --wait
+      register: lxc_devices_boot
+      changed_when: false
+      failed_when: lxc_devices_boot.stdout | trim not in ['running', 'degraded']
+      timeout: 180
+      when:
+        - lxc_devices_dirty
+        - lxc_devices_running
+
+    # A device that is configured but still missing (for example denied by the
+    # container's confinement) would otherwise trigger a reboot on every run.
+    - name: Check that the devices appeared in the container
+      ansible.builtin.command:
+        argv:
+          - pct
+          - exec
+          - "{{ lxc_devices_guest_id }}"
+          - --
+          - test
+          - -e
+          - "{{ item }}"
+      loop: "{{ lxc_devices_applied }}"
+      register: lxc_devices_after
+      changed_when: false
+      failed_when: false
+      when:
+        - not ansible_check_mode
+        - lxc_devices_dirty
+        - lxc_devices_running
+
+    - name: Assert the devices appeared in the container
+      ansible.builtin.assert:
+        that: lxc_devices_after.results | rejectattr('rc', 'eq', 0) | list | length == 0
+        fail_msg: >-
+          Container {{ lxc_devices_guest_id }} was rebooted but still lacks
+          {{ lxc_devices_after.results | rejectattr('rc', 'eq', 0) | map(attribute='item') | join(', ') }}.
+          Check the container configuration and the host device.
+        quiet: true
+      when:
+        - not ansible_check_mode
+        - lxc_devices_dirty
+        - lxc_devices_running

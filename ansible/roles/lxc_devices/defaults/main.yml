@@ -1,0 +1,15 @@
+---
+# Host devices passed to containers: Proxmox guest ID to a list of devices. Each
+# device has a host path and, optionally, the name of a group inside the container
+# that should own it (its gid is read from the container). Only root@pam can set
+# devices on a container, so OpenTofu cannot; a guest or a host device that does not
+# exist yet is skipped. A guest is restarted once when its devices change, because
+# devices are not hot-plugged.
+#
+#   lxc_devices_guests:
+#     164:
+#       - path: /dev/net/tun
+#     163:
+#       - path: /dev/dri/renderD128
+#         group: render
+lxc_devices_guests: {}

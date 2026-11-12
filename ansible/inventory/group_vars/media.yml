@@ -17,3 +17,5 @@ jackett_indexer_site_links:
   wolfmax4k: https://wolftorrent.com/
 prowlarr_jackett_url: http://127.0.0.1:9117
 prowlarr_jackett_indexers: "{{ jackett_indexers }}"
+
+jellyfin_hwaccel: true

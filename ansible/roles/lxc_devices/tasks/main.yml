@@ -1,0 +1,9 @@
+---
+- name: Give containers access to host devices
+  ansible.builtin.include_tasks: guest.yml
+  loop: "{{ lxc_devices_guests | dict2items }}"
+  loop_control:
+    loop_var: lxc_devices_guest
+  vars:
+    lxc_devices_guest_id: "{{ lxc_devices_guest.key }}"
+    lxc_devices_list: "{{ lxc_devices_guest.value }}"

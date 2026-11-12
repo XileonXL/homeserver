@@ -1,0 +1,91 @@
+---
+- name: Check the device on the host
+  ansible.builtin.stat:
+    path: "{{ lxc_devices_item.path }}"
+  register: lxc_devices_host
+
+- name: Skip the device while it does not exist on the host
+  ansible.builtin.debug:
+    msg: "{{ lxc_devices_item.path }} does not exist on the host, so container {{ lxc_devices_guest_id }} does not get it."
+  when: not lxc_devices_host.stat.exists
+
+- name: Set the device when it is missing or different
+  when: lxc_devices_host.stat.exists
+  block:
+    # Entries read "devN: <path>[,gid=N]"; a plain "path=" key is accepted too.
+    - name: Find the entry for the device
+      ansible.builtin.set_fact:
+        lxc_devices_found: >-
+          {{ lxc_devices_config.stdout
+             | regex_findall('(?m)^(dev\d+): (?:path=)?' ~ (lxc_devices_item.path | regex_escape) ~ '(?:,(.*))?$')
+             | first | default([]) }}
+        lxc_devices_gid: >-
+          {{ ((lxc_devices_groups.results | selectattr('item', 'eq', lxc_devices_item.group)
+               | first).stdout | trim).split(':')[2] if lxc_devices_item.group is defined else '' }}
+
+    - name: Remember the device
+      ansible.builtin.set_fact:
+        lxc_devices_applied: "{{ lxc_devices_applied + [lxc_devices_item.path] }}"
+
+    - name: Work out the slot and the entry
+      ansible.builtin.set_fact:
+        lxc_devices_slot: >-
+          {{ lxc_devices_found[0] if lxc_devices_found
+             else 'dev' ~ (range(256) | reject('in', lxc_devices_taken) | first) }}
+        lxc_devices_entry: "{{ lxc_devices_item.path }}{{ ',gid=' ~ lxc_devices_gid if lxc_devices_gid else '' }}"
+        lxc_devices_current: >-
+          {{ lxc_devices_found | length > 0
+             and (not lxc_devices_gid or ('gid=' ~ lxc_devices_gid) in lxc_devices_found[1].split(',')) }}
+
+    # Commands do not run in check mode; this reports the change instead.
+    - name: Report that the device would be set
+      ansible.builtin.debug:
+        msg: "Would set {{ lxc_devices_entry }} on container {{ lxc_devices_guest_id }} as {{ lxc_devices_slot }}."
+      changed_when: true
+      when:
+        - ansible_check_mode
+        - not lxc_devices_current
+
+    - name: Set the device
+      ansible.builtin.command:
+        argv:
+          - pct
+          - set
+          - "{{ lxc_devices_guest_id }}"
+          - "--{{ lxc_devices_slot }}"
+          - "{{ lxc_devices_entry }}"
+      changed_when: true
+      when: not lxc_devices_current
+
+    - name: Note the change
+      ansible.builtin.set_fact:
+        lxc_devices_dirty: true
+        lxc_devices_taken: "{{ lxc_devices_taken + [lxc_devices_slot[3:] | int] }}"
+      when: not lxc_devices_current
+
+    # The configuration may hold the device while the running container lacks it,
+    # when an earlier reboot did not happen.
+    - name: Check that the running container has the device
+      ansible.builtin.command:
+        argv:
+          - pct
+          - exec
+          - "{{ lxc_devices_guest_id }}"
+          - --
+          - test
+          - -e
+          - "{{ lxc_devices_item.path }}"
+      register: lxc_devices_present
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when:
+        - lxc_devices_current
+        - lxc_devices_running
+
+    - name: Note the missing device
+      ansible.builtin.set_fact:
+        lxc_devices_dirty: true
+      when:
+        - lxc_devices_present is not skipped
+        - lxc_devices_present.rc != 0

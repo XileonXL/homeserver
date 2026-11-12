@@ -8,7 +8,7 @@ appliance and is not managed here.
 |---|---|---|
 | `proxmox_domain` | `proxmox` | Sets the DNS domain of the node |
 | `tailscale` | `proxmox`, `caddy` | Installs Tailscale and joins the tailnet; the host also advertises the LAN as a subnet router |
-| `lxc_tun` | `proxmox` | Gives the Caddy container `/dev/net/tun` (restarts it only when it changes) |
+| `lxc_devices` | `proxmox` | Passes host devices to containers (`/dev/net/tun` to Caddy, the GPU render node to `media`); restarts a container once when its devices change |
 | `tailnet_dns` | `caddy` | dnsmasq on Caddy's Tailscale address, answering the local domain over the tailnet |
 | `proxmox_opentofu` | `proxmox` | Creates the API token for OpenTofu and downloads the Debian LXC template |
 | `haos_image` | `proxmox` | Downloads the Home Assistant OS disk image for OpenTofu to import |
@@ -18,7 +18,7 @@ appliance and is not managed here.
 | `pihole` | `pihole` | Installs and configures Pi-hole v6 |
 | `caddy` | `caddy` | Reverse proxy: every service as `https://<name>` with Caddy's internal CA |
 | `gatus` | `gatus` | Builds and runs the Gatus status page; alerts through Telegram |
-| `jellyfin` | `media` | Installs Jellyfin from its apt repository and creates the library directories |
+| `jellyfin` | `media` | Installs Jellyfin from its apt repository, creates the library directories and optionally enables hardware transcoding |
 | `qbittorrent` | `media` | Installs headless qBittorrent, downloading onto the media disk |
 | `flaresolverr` | `media` | Installs FlareSolverr from the release tarball, for indexers behind a browser challenge |
 | `jackett` | `media` | Installs Jackett from the release tarball, for sites Prowlarr has no definition for |
@@ -99,8 +99,9 @@ A container must exist before its play can run, so the order for a new guest is
 
 1. `ansible-playbook site.yml --limit proxmox`
 2. Create the guest with [OpenTofu](../opentofu/README.md).
-3. `ansible-playbook site.yml --limit proxmox` again: `lxc_tun` adds `/dev/net/tun` to
-   Caddy; a running Caddy restarts, so it is unreachable for a few seconds.
+3. `ansible-playbook site.yml --limit proxmox` again: `lxc_devices` adds `/dev/net/tun` to
+   Caddy, and the GPU render node to `media` the first time; a running container
+   restarts, so Caddy is unreachable for a few seconds.
 4. `ansible-playbook site.yml --limit pihole`
 5. `ansible-playbook site.yml --limit caddy` joins Caddy to the tailnet and starts its DNS.
 6. Tailscale admin console steps below.

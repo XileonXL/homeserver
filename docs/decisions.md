@@ -57,7 +57,7 @@ Renumbering the home LAN would fix it only until a network with the new range tu
 and it touches every device and DHCP reservation. Instead Caddy, which every name
 resolves to, joins the tailnet with its own stable `100.x` address (a normal client
 with kernel networking; it needs `/dev/net/tun`, which only root@pam can set, so the
-`lxc_tun` role does it on the host, as it does for the media bind mount).
+`lxc_devices` role does it on the host, as `media_disk` does for the media bind mount).
 
 Names must resolve to that address away from home. A dnsmasq on Caddy listens on the
 Tailscale address only and answers `homeserver.lan` and every subdomain with it;
@@ -128,6 +128,13 @@ links need computation. Jackett has code for some of those, so it runs behind Pr
 which reaches each of its indexers as a Torznab feed; searching still happens in one
 place. That container resolves names through Pi-hole instead of the gateway, because
 the resolver behind a home router may block the sites the indexers search.
+
+Jellyfin transcodes on the host's integrated GPU through VAAPI. The render node is
+passed to the container by the `lxc_devices` role (again root-only, so not OpenTofu),
+with the gid of the container's own `render` group. The driver comes with Jellyfin's
+ffmpeg, so no extra package is installed. Hardware transcoding stays off by default in
+the role because it needs that device. The first apply restarts the container once,
+because devices are not hot-plugged.
 
 
 ## Home Assistant is defined but powered off

@@ -65,12 +65,66 @@
     not ansible_check_mode
     or ('jellyfin' in ansible_facts['packages'] and jellyfin_group is not changed)
   block:
-    - name: Add the jellyfin user to the media group
+    - name: Check the render device
+      when: jellyfin_hwaccel | bool
+      block:
+        - name: Check the render device in the container
+          ansible.builtin.stat:
+            path: "{{ jellyfin_hwaccel_device }}"
+          register: jellyfin_hwaccel_stat
+
+        # In check mode the device may be pending a reboot of the container.
+        - name: Assert the render device exists
+          ansible.builtin.assert:
+            that: jellyfin_hwaccel_stat.stat.exists
+            fail_msg: >-
+              {{ jellyfin_hwaccel_device }} does not exist in the container. Run the
+              proxmox play (lxc_devices) with the GPU present and the container
+              running, then try again.
+            quiet: true
+          when: not ansible_check_mode
+
+    # The render group owns the GPU render node inside the container.
+    - name: Add the jellyfin user to its groups
       ansible.builtin.user:
         name: jellyfin
-        groups: "{{ jellyfin_media_group }}"
+        groups: "{{ [jellyfin_media_group] + (['render'] if jellyfin_hwaccel | bool else []) }}"
         append: true
       notify: Restart jellyfin
+
+    - name: Configure hardware transcoding
+      when: jellyfin_hwaccel | bool
+      block:
+        # Jellyfin writes the whole file back whenever settings are saved, so only
+        # the elements this role owns are edited; a template would fight it. A
+        # missing file is created first with those elements.
+        - name: Create the encoding configuration if missing
+          ansible.builtin.template:
+            src: encoding.xml.j2
+            dest: "{{ jellyfin_encoding_config }}"
+            owner: jellyfin
+            group: jellyfin
+            mode: "0644"
+            force: false
+          register: jellyfin_encoding_created
+          notify: Restart jellyfin
+
+        - name: Set the hardware acceleration options
+          ansible.builtin.replace:
+            path: "{{ jellyfin_encoding_config }}"
+            regexp: '<{{ item.key }}>[^<]*</{{ item.key }}>|<{{ item.key }}\s*/>'
+            replace: "<{{ item.key }}>{{ item.value }}</{{ item.key }}>"
+          loop: "{{ jellyfin_encoding_options | dict2items }}"
+          notify: Restart jellyfin
+          when: jellyfin_encoding_created is not changed
+
+        - name: Set the hardware decoding codecs
+          ansible.builtin.replace:
+            path: "{{ jellyfin_encoding_config }}"
+            regexp: '(?s)^[ \t]*<HardwareDecodingCodecs\s*/>|^[ \t]*<HardwareDecodingCodecs>.*?</HardwareDecodingCodecs>'
+            replace: "  {{ lookup('ansible.builtin.template', 'decoding_codecs.xml.j2') | trim }}"
+          notify: Restart jellyfin
+          when: jellyfin_encoding_created is not changed
 
     - name: Create the library directories
       ansible.builtin.file:

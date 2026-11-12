@@ -11,7 +11,7 @@
     - role: haos_network
     - role: alerts
     - role: media_disk
-    - role: lxc_tun
+    - role: lxc_devices
 
 # A fresh Debian LXC template may have no Python (or python3-apt), which
 # Ansible modules need. raw works without it. The facts gathered here are kept

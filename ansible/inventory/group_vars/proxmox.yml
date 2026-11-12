@@ -16,7 +16,11 @@ haos_network_dns:
 haos_network_trusted_proxies:
   - 192.168.1.64
 
-# Containers that run a Tailscale client (Caddy); the guest ID is in
-# opentofu/envs/homeserver/variables.tf.
-lxc_tun_guest_ids:
-  - 164
+# Devices passed to containers; the guest IDs are in opentofu/envs/homeserver/variables.tf.
+# Caddy runs a Tailscale client (kernel networking); Jellyfin transcodes on the GPU.
+lxc_devices_guests:
+  164:
+    - path: /dev/net/tun
+  163:
+    - path: /dev/dri/renderD128
+      group: render
